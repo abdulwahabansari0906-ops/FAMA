@@ -1,4 +1,5 @@
 import 'package:fama/Community_screen/whatsapp_invite_screen.dart';
+import 'package:fama/Feed_screen/feed_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -17,7 +18,9 @@ https://your-invite-link.com
 ''';
 
   void _skipStep() {
-    // Get.toNamed('/next-screen');
+    // "Signup ke baad seedha bottom nav (FeedScreen) par le jata hai"
+    // TODO: agar backend par "onboarding complete" flag save karna ho to yahan call karein
+    Get.offAll(() => const FeedScreen());
   }
 
 
@@ -28,7 +31,7 @@ https://your-invite-link.com
 
       // Reusable AppBar
       appBar: FamaStepAppBar(
-        actionText: 'Skip ›',
+        actionText: 'Skip',
         onBackTap: () => Get.back(),
         onNextTap: _skipStep,
       ),
@@ -80,8 +83,8 @@ https://your-invite-link.com
                       // Center Image
                       Image.asset(
                         'assets/images/friend.png',
-                        width: 85,
-                        height: 85,
+                        width: 120,
+                        height: 120,
                         fit: BoxFit.contain,
                         semanticLabel: 'Invite friends',
                       ),
@@ -113,7 +116,7 @@ https://your-invite-link.com
                           height: 44,
                           child: ElevatedButton(
                             onPressed: () {
-                             Get.to(()=>WhatsAppInviteScreen());
+                              Get.to(()=>WhatsAppInviteScreen());
                             },
                             style: ElevatedButton.styleFrom(
                               elevation: 0,
@@ -178,7 +181,7 @@ class _WhatsAppIcon extends StatelessWidget {
 
       ),
       child: Image.asset("assets/images/whatsapp.png",
-      width: 18,height: 18,),
+        width: 18,height: 18,),
     );
   }
 }

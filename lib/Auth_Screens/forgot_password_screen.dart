@@ -66,10 +66,22 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                     hintStyle: TextStyle(
                       fontFamily: "Rob",
                     ),
-                    border: OutlineInputBorder(
-
+                    enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.all(
                         Radius.circular(10),
+                      ),
+                      borderSide: BorderSide(
+                        color: Colors.grey,
+                        width: 0.5,
+                      ),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.all(
+                        Radius.circular(10),
+                      ),
+                      borderSide: BorderSide(
+                        color: Colors.black,
+                        width: 1,
                       ),
                     ),
                   ),

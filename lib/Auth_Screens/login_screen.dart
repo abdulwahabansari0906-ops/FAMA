@@ -2,6 +2,7 @@ import 'package:fama/Auth_Screens/forgot_password_screen.dart';
 import 'package:fama/Auth_Screens/signup_details_screen.dart';
 import 'package:fama/Auth_Screens/signup_screen.dart';
 import 'package:fama/Community_screen/onboarding_screens.dart';
+import 'package:fama/Feed_screen/feed_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get_core/src/get_main.dart';
 import 'package:get/get_navigation/src/extension_navigation.dart';
@@ -44,9 +45,23 @@ class _LoginScreenState extends State<LoginScreen> {
                     hintStyle: TextStyle(
                       fontFamily: "Rob",
                     ),
-                    border: OutlineInputBorder(
+
+                    enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.all(
                         Radius.circular(10),
+                      ),
+                      borderSide: BorderSide(
+                        color: Colors.grey,
+                        width: 0.5,
+                      ),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.all(
+                        Radius.circular(10),
+                      ),
+                      borderSide: BorderSide(
+                        color: Colors.black,
+                        width: 1,
                       ),
                     ),
                   ),
@@ -66,9 +81,22 @@ class _LoginScreenState extends State<LoginScreen> {
                     hintStyle: TextStyle(
                       fontFamily: "Rob",
                     ),
-                    border: OutlineInputBorder(
+                    enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.all(
                         Radius.circular(10),
+                      ),
+                      borderSide: BorderSide(
+                        color: Colors.grey,
+                        width: 0.5,
+                      ),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.all(
+                        Radius.circular(10),
+                      ),
+                      borderSide: BorderSide(
+                        color: Colors.black,
+                        width: 1,
                       ),
                     ),
                   ),
@@ -80,12 +108,12 @@ class _LoginScreenState extends State<LoginScreen> {
                 alignment: Alignment.center,
                 child: TextButton(
                   onPressed: () {
-                   Get.to(()=>ForgotPasswordScreen());
+                    Get.to(()=>ForgotPasswordScreen());
                   },
                   child: const Text(
                     'Forgot Password',
                     style: TextStyle(color: Colors.black87, fontSize: 15,
-                    fontFamily: "Rob"),
+                        fontFamily: "Rob"),
                   ),
                 ),
               ),
@@ -93,7 +121,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
               ElevatedButton(
                 onPressed: () {
-                // Get.to(()=>OnboardingScreen());
+                  // TODO: login API call yahan lagayein, success par neeche wali line chalegi
+                  Get.offAll(() => const FeedScreen());
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.black,
@@ -106,7 +135,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: const Text(
                   'Login',
                   style: TextStyle(fontWeight: FontWeight.w600,
-                  fontFamily: "Rob"),
+                      fontFamily: "Rob"),
                 ),
               ),
               const SizedBox(height: 16),
@@ -117,11 +146,11 @@ class _LoginScreenState extends State<LoginScreen> {
                   const Text(
                     "Don't Have Account? ",
                     style: TextStyle(fontSize: 12,
-                    fontFamily: "Rob"),
+                        fontFamily: "Rob"),
                   ),
                   GestureDetector(
                     onTap: () {
-                     Get.to (()=>SignUpScreen());
+                      Get.to (()=>SignUpScreen());
                     },
                     child: const Text(
                       'Sign Up',

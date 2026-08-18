@@ -34,11 +34,20 @@ class FamaTopBar extends StatelessWidget implements PreferredSizeWidget {
             color: Colors.black,
             borderRadius: BorderRadius.circular(5)
           ),
-          child: Center(
-            child: const Text(
-              '‹ Back',
-              style: TextStyle(color: Colors.white, fontSize: 13),
-            ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: const [
+              Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 14),
+              SizedBox(width: 2),
+              Text(
+                'Back',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
           ),
         ),
       ),

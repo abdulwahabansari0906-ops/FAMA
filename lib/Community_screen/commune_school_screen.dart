@@ -50,7 +50,7 @@ class _ChooseSchoolScreenState
 
       // Reusable AppBar
       appBar: FamaStepAppBar(
-        actionText: 'Skip ›',
+        actionText: 'Skip',
         onBackTap: () => Get.back(),
         onNextTap: _skipStep,
       ),

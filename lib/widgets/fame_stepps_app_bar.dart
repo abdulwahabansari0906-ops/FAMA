@@ -6,7 +6,7 @@ class FamaStepAppBar extends StatelessWidget
     super.key,
     required this.onBackTap,
     required this.onNextTap,
-    this.actionText = 'Next ›',
+    this.actionText = 'Next',
     this.showNextButton = true,
   });
 
@@ -47,7 +47,9 @@ class FamaStepAppBar extends StatelessWidget
         child: Align(
           alignment: Alignment.centerLeft,
           child: _appBarButton(
-            text: '‹ Back',
+            text: 'Back',
+            icon: Icons.chevron_left,
+            iconBeforeText: true,
             onTap: onBackTap,
           ),
         ),
@@ -75,7 +77,7 @@ class FamaStepAppBar extends StatelessWidget
         ],
       ),
 
-      // Right Button
+      // Next Button
       actions: [
         SizedBox(
           width: 84,
@@ -86,6 +88,7 @@ class FamaStepAppBar extends StatelessWidget
               child: showNextButton
                   ? _appBarButton(
                 text: actionText,
+                icon: Icons.chevron_right,
                 onTap: onNextTap,
               )
                   : const SizedBox.shrink(),
@@ -98,7 +101,9 @@ class FamaStepAppBar extends StatelessWidget
 
   Widget _appBarButton({
     required String text,
+    required IconData icon,
     required VoidCallback onTap,
+    bool iconBeforeText = false,
   }) {
     return SizedBox(
       width: 52,
@@ -115,15 +120,39 @@ class FamaStepAppBar extends StatelessWidget
             borderRadius: BorderRadius.circular(4),
           ),
         ),
-        child: Text(
-          text,
-          maxLines: 1,
-          style: const TextStyle(
-            fontFamily: 'Rob',
-            color: Colors.white,
-            fontSize: 10,
-            fontWeight: FontWeight.w500,
-          ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            if (iconBeforeText) ...[
+              Icon(
+                icon,
+                size: 14,
+                color: Colors.white,
+              ),
+              const SizedBox(width: 1),
+            ],
+
+            Text(
+              text,
+              maxLines: 1,
+              style: const TextStyle(
+                fontFamily: 'Rob',
+                color: Colors.white,
+                fontSize: 10,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+
+            if (!iconBeforeText) ...[
+              const SizedBox(width: 1),
+              Icon(
+                icon,
+                size: 14,
+                color: Colors.white,
+              ),
+            ],
+          ],
         ),
       ),
     );
