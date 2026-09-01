@@ -1,6 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../services and managers/whatsapp_invite_service.dart';
 import '../widgets/fama_bottom_nav.dart';
 import '../Feed_screen/post_now_popup.dart';
+import '../services and managers/logout_service.dart';
+import '../services and managers/session_manager.dart';
+import '../widgets/app_helper.dart';
 
 class ProfilePost {
   final String image;
@@ -38,6 +44,161 @@ class _ProfileScreenState extends State<ProfileScreen> {
     ProfilePost(image: 'assets/images/p5.jpg', stars: '255', views: '2.5k'),
     ProfilePost(image: 'assets/images/p6.jpg', stars: '255', views: '2.5k'),
   ];
+
+  void _showLogoutDialog() {
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+          title: const Text(
+            'Logout',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontFamily: 'Rob',
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: _darkColor,
+            ),
+          ),
+          content: const Text(
+            'Are you sure you want to logout?',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontFamily: 'Rob',
+              fontSize: 13,
+              color: Color(0xFF60656B),
+            ),
+          ),
+          actionsAlignment: MainAxisAlignment.center,
+          actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+          actions: [
+            Expanded(
+              child: OutlinedButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: _darkColor,
+                  side: const BorderSide(color: _borderColor),
+                  shape: const StadiumBorder(),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+                child: const Text(
+                  'No',
+                  style: TextStyle(
+                    fontFamily: 'Rob',
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(dialogContext);
+                  _handleLogout();
+                },
+                style: ElevatedButton.styleFrom(
+                  elevation: 0,
+                  backgroundColor: _darkColor,
+                  foregroundColor: Colors.white,
+                  shape: const StadiumBorder(),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+                child: const Text(
+                  'Yes',
+                  style: TextStyle(
+                    fontFamily: 'Rob',
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _handleLogout() async {
+    AppHelpers.showLoader();
+    try {
+      final message = await LogoutService.logout();
+      await SessionManager.clear();
+      AppHelpers.hideLoader();
+      AppHelpers.showSuccess(message);
+      SessionManager.logout(); // Get.offAll(() => LoginScreen())
+    } catch (e) {
+      // API fail ho jaye tab bhi local session clear karke login pe bhejna behtar hai
+      await SessionManager.clear();
+      AppHelpers.hideLoader();
+      SessionManager.logout();
+    }
+  }
+
+  Future<bool> _launchExternalUrl(Uri url) async {
+    try {
+      return await launchUrl(
+        url,
+        mode: LaunchMode.externalApplication,
+      );
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Top bar ke Invite button ka handler — session se phone number nikal
+  /// kar invite API call karta hai aur backend se aaya hua whatsapp_url open karta hai.
+  ///
+  /// Uses [AppHelpers] for the blocking loader and success/error snackbars.
+  Future<void> _handleTopBarInvite() async {
+    if (Get.isDialogOpen == true) return; // request already in progress
+
+    final String? phoneNumber = SessionManager.phoneNumber;
+    final String? token = SessionManager.accessToken;
+
+    if (phoneNumber == null || phoneNumber.trim().isEmpty) {
+      AppHelpers.showError(
+        'Phone number not found. Please log in again.',
+      );
+      return;
+    }
+
+    if (token == null || token.trim().isEmpty) {
+      AppHelpers.showError(
+        'Session expired. Please log in again.',
+      );
+      return;
+    }
+
+    AppHelpers.showLoader();
+
+    try {
+      final InviteResponse invite = await InviteApiService.getInviteLink(
+        phoneNumber: phoneNumber,
+        token: token,
+      );
+
+      // Opens WhatsApp's own contact/chat list with the invite message
+      // pre-filled, so the user picks who to send it to.
+      final bool opened = await _launchExternalUrl(invite.contactPickerUri);
+
+      AppHelpers.hideLoader();
+
+      if (!opened) {
+        AppHelpers.showError('Could not open WhatsApp.');
+      }
+    } catch (e) {
+      AppHelpers.hideLoader();
+      debugPrint('Invite error: $e');
+      AppHelpers.showError(e.toString().replaceFirst('Exception: ', ''));
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -96,31 +257,34 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
               const Spacer(),
               // Invite button
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                decoration: BoxDecoration(
-                  color: _whatsappColor,
-                  borderRadius: BorderRadius.circular(5),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children:  [
-                    Image.asset(
-                      'assets/images/whatsapp.png',
-                      width: 14,
-                      height: 14,
-                    ),
-                    SizedBox(width: 5),
-                    Text(
-                      'Invite',
-                      style: TextStyle(
-                        fontFamily: 'Rob',
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
+              GestureDetector(
+                onTap: _handleTopBarInvite,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: _whatsappColor,
+                    borderRadius: BorderRadius.circular(5),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Image.asset(
+                        'assets/images/whatsapp.png',
+                        width: 14,
+                        height: 14,
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 5),
+                      const Text(
+                        'Invite',
+                        style: TextStyle(
+                          fontFamily: 'Rob',
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
               const SizedBox(width: 8),
@@ -151,6 +315,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
               const SizedBox(width: 8),
               const Icon(Icons.settings_outlined, color: _darkColor, size: 22),
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: _showLogoutDialog,
+                child: const Icon(Icons.logout_rounded, color: _darkColor, size: 22),
+              ),
             ],
           ),
         ),

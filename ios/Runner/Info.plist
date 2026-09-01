@@ -48,6 +48,22 @@
         <string>whatsapp</string>
     </array>
 
+    <!-- Required for image_picker to access photo library -->
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>This app needs access to your photo library to select photos and videos.</string>
+
+    <!-- Required if the app also saves photos/videos back to the library -->
+    <key>NSPhotoLibraryAddUsageDescription</key>
+    <string>This app needs permission to save photos and videos to your photo library.</string>
+
+    <!-- Required if image_picker is used with the camera source -->
+    <key>NSCameraUsageDescription</key>
+    <string>This app needs access to your camera to take photos.</string>
+
+    <!-- Required if recording video via camera -->
+    <key>NSMicrophoneUsageDescription</key>
+    <string>This app needs access to your microphone to record videos.</string>
+
     <key>UIApplicationSceneManifest</key>
     <dict>
         <key>UIApplicationSupportsMultipleScenes</key>

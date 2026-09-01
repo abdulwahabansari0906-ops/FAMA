@@ -1,6 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../services and managers/whatsapp_invite_service.dart';
 import '../widgets/fama_bottom_nav.dart';
 import '../Feed_screen/post_now_popup.dart';
+import '../widgets/app_helper.dart';
+import '../services and managers/session_manager.dart';
+
 import 'message_individual_screen.dart';
 
 class ChatPreview {
@@ -82,6 +88,65 @@ class MessagesMainScreen extends StatelessWidget {
     ),
   ];
 
+  Future<bool> _launchExternalUrl(Uri url) async {
+    try {
+      return await launchUrl(
+        url,
+        mode: LaunchMode.externalApplication,
+      );
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Top bar ke Invite button ka handler — session se phone number aur
+  /// token nikal kar invite API call karta hai, phir WhatsApp ki contact
+  /// list kholta hai (bina kisi fixed number ke) taake user khud select
+  /// kar ke invite link kisi ko bhi send kar sake.
+  Future<void> _handleTopBarInvite() async {
+    if (Get.isDialogOpen == true) return; // request already in progress
+
+    final String? phoneNumber = SessionManager.phoneNumber;
+    final String? token = SessionManager.accessToken;
+
+    if (phoneNumber == null || phoneNumber.trim().isEmpty) {
+      AppHelpers.showError(
+        'Phone number not found. Please log in again.',
+      );
+      return;
+    }
+
+    if (token == null || token.trim().isEmpty) {
+      AppHelpers.showError(
+        'Session expired. Please log in again.',
+      );
+      return;
+    }
+
+    AppHelpers.showLoader();
+
+    try {
+      final InviteResponse invite = await InviteApiService.getInviteLink(
+        phoneNumber: phoneNumber,
+        token: token,
+      );
+
+      // Opens WhatsApp's own contact/chat list with the invite message
+      // pre-filled, so the user picks who to send it to.
+      final bool opened = await _launchExternalUrl(invite.contactPickerUri);
+
+      AppHelpers.hideLoader();
+
+      if (!opened) {
+        AppHelpers.showError('Could not open WhatsApp.');
+      }
+    } catch (e) {
+      AppHelpers.hideLoader();
+      debugPrint('Invite error: $e');
+      AppHelpers.showError(e.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -130,31 +195,34 @@ class MessagesMainScreen extends StatelessWidget {
               ),
               const Spacer(),
               // Invite button
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                decoration: BoxDecoration(
-                  color: _whatsappColor,
-                  borderRadius: BorderRadius.circular(5),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children:  [
-                    Image.asset(
-                      'assets/images/whatsapp.png',
-                      width: 14,
-                      height: 14,
-                    ),
-                    SizedBox(width: 5),
-                    Text(
-                      'Invite',
-                      style: TextStyle(
-                        fontFamily: 'Rob',
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
+              GestureDetector(
+                onTap: _handleTopBarInvite,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: _whatsappColor,
+                    borderRadius: BorderRadius.circular(5),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Image(
+                        image: AssetImage('assets/images/whatsapp.png'),
+                        width: 14,
+                        height: 14,
                       ),
-                    ),
-                  ],
+                      SizedBox(width: 5),
+                      Text(
+                        'Invite',
+                        style: TextStyle(
+                          fontFamily: 'Rob',
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
               const SizedBox(width: 8),

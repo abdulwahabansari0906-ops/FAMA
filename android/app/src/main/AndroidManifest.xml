@@ -1,5 +1,18 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- Internet access — required for all API calls (invite, posts, etc.) -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Reading photos/videos from the gallery (image_picker) -->
+    <!-- Android 13+ (API 33+) granular media permissions -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+
+    <!-- Android 12 and below fallback -->
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+
     <application
         android:label="Fama"
         android:name="${applicationName}"

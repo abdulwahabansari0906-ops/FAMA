@@ -1,4 +1,6 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'create_post_screen.dart';
 
 /// "+" button dabane par ye popup dikhta hai — Post TikTok / Create Post / Upload Post.
@@ -13,8 +15,10 @@ Future<void> showPostNowPopup(BuildContext context) {
     barrierLabel: 'Post Now',
     barrierColor: Colors.black.withOpacity(0.45),
     transitionDuration: const Duration(milliseconds: 200),
-    pageBuilder: (context, animation, secondaryAnimation) {
-      return const _PostNowPopup();
+    pageBuilder: (dialogContext, animation, secondaryAnimation) {
+      // parentContext (outer screen) navigation ke liye pass karte hain,
+      // taake popup band hone ke baad bhi valid rahe.
+      return _PostNowPopup(parentContext: context);
     },
     transitionBuilder: (context, animation, secondaryAnimation, child) {
       return FadeTransition(
@@ -31,8 +35,50 @@ Future<void> showPostNowPopup(BuildContext context) {
   );
 }
 
+/// Opens the gallery to pick a single video, then pushes [CreatePostScreen]
+/// pre-loaded with it. Used by both "Post TikTok" and "Create Post" tiles.
+Future<void> _pickVideoAndOpenCreatePost(
+    BuildContext dialogContext, BuildContext parentContext) async {
+  Navigator.pop(dialogContext); // close the popup first (uses dialog's own context)
+
+  final ImagePicker picker = ImagePicker();
+  final XFile? video = await picker.pickVideo(source: ImageSource.gallery);
+
+  if (video == null || !parentContext.mounted) return; // user cancelled
+
+  Navigator.push(
+    parentContext, // parent screen's context — still mounted
+    MaterialPageRoute(
+      builder: (_) => CreatePostScreen(initialVideo: File(video.path)),
+    ),
+  );
+}
+
+/// Opens the gallery to pick one or more photos, then pushes
+/// [CreatePostScreen] pre-loaded with them. Used by "Upload Post".
+Future<void> _pickImagesAndOpenCreatePost(
+    BuildContext dialogContext, BuildContext parentContext) async {
+  Navigator.pop(dialogContext); // close the popup first
+
+  final ImagePicker picker = ImagePicker();
+  final List<XFile> images = await picker.pickMultiImage();
+
+  if (images.isEmpty || !parentContext.mounted) return; // user cancelled
+
+  Navigator.push(
+    parentContext,
+    MaterialPageRoute(
+      builder: (_) => CreatePostScreen(
+        initialImages: images.map((XFile x) => File(x.path)).toList(),
+      ),
+    ),
+  );
+}
+
 class _PostNowPopup extends StatelessWidget {
-  const _PostNowPopup();
+  const _PostNowPopup({required this.parentContext});
+
+  final BuildContext parentContext;
 
   static const Color _darkColor = Color(0xFF020A16);
 
@@ -73,33 +119,24 @@ class _PostNowPopup extends StatelessWidget {
                         iconBg: Colors.black,
                         iconColor: Colors.white,
                         label: 'Post TikTok',
-                        onTap: () {
-                          Navigator.pop(context);
-                          // TODO: TikTok se post karne ka flow yahan lagayein
-                        },
+                        onTap: () =>
+                            _pickVideoAndOpenCreatePost(context, parentContext),
                       ),
                       const Divider(height: 1, color: Color(0xFFE4E8ED)),
                       _PopupTile(
                         icon: Icons.add_box_outlined,
                         iconColor: _darkColor,
                         label: 'Create Post',
-                        onTap: () {
-                          Navigator.pop(context);
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (context) => const CreatePostScreen()),
-                          );
-                        },
+                        onTap: () =>
+                            _pickVideoAndOpenCreatePost(context, parentContext),
                       ),
                       const Divider(height: 1, color: Color(0xFFE4E8ED)),
                       _PopupTile(
                         icon: Icons.file_upload_outlined,
                         iconColor: _darkColor,
                         label: 'Upload Post',
-                        onTap: () {
-                          Navigator.pop(context);
-                          // TODO: gallery se file upload karne ka flow yahan lagayein
-                        },
+                        onTap: () =>
+                            _pickImagesAndOpenCreatePost(context, parentContext),
                       ),
                     ],
                   ),

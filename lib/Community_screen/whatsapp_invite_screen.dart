@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../services and managers/session_manager.dart';
+import '../services and managers/whatsapp_invite_service.dart';
 import '../widgets/fame_stepps_app_bar.dart';
+import '../widgets/app_helper.dart';
+
 
 class WhatsAppInviteScreen extends StatefulWidget {
   const WhatsAppInviteScreen({super.key});
@@ -77,49 +81,55 @@ class _WhatsAppInviteScreenState
     }
   }
 
+  /// Fetches the phone number from the session, calls the invite API,
+  /// and opens the WhatsApp URL returned by the backend.
+  ///
+  /// Shows a blocking loader while the request is in flight, and a
+  /// success/error snackbar via [AppHelpers] once it completes.
   Future<void> _openWhatsApp(
       BuildContext context, {
         InviteFriend? friend,
       }) async {
-    final String message = friend == null
-        ? '''
-Join me on FAMA and earn rewards with me!
+    if (Get.isDialogOpen == true) return; // request already in progress
 
-https://your-invite-link.com
-'''
-        : '''
-Hi ${friend.name},
+    final String? phoneNumber = SessionManager.phoneNumber;
+    final String? token = SessionManager.accessToken;
 
-Join me on FAMA and earn rewards with me!
-
-https://your-invite-link.com
-''';
-
-    final String encodedMessage = Uri.encodeComponent(message);
-
-    final Uri whatsappAppUrl = Uri.parse(
-      'whatsapp://send?text=$encodedMessage',
-    );
-
-    final Uri whatsappWebUrl = Uri.parse(
-      'https://wa.me/?text=$encodedMessage',
-    );
-
-    bool opened = await _launchExternalUrl(whatsappAppUrl);
-
-    if (!opened) {
-      opened = await _launchExternalUrl(whatsappWebUrl);
+    if (phoneNumber == null || phoneNumber.trim().isEmpty) {
+      AppHelpers.showError(
+        'Phone number not found. Please log in again.',
+      );
+      return;
     }
 
-    if (!opened && context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'WhatsApp open nahi ho saka.',
-            style: TextStyle(fontFamily: 'Rob'),
-          ),
-        ),
+    if (token == null || token.trim().isEmpty) {
+      AppHelpers.showError(
+        'Session expired. Please log in again.',
       );
+      return;
+    }
+
+    AppHelpers.showLoader();
+
+    try {
+      final InviteResponse invite = await InviteApiService.getInviteLink(
+        phoneNumber: phoneNumber,
+        token: token,
+      );
+
+      // Opens WhatsApp's own contact/chat list with the invite message
+      // pre-filled, so the user picks who to send it to.
+      final bool opened = await _launchExternalUrl(invite.contactPickerUri);
+
+      AppHelpers.hideLoader();
+
+      if (!opened) {
+        AppHelpers.showError('Could not open WhatsApp.');
+      }
+    } catch (e) {
+      AppHelpers.hideLoader();
+      debugPrint('Invite error: $e');
+      AppHelpers.showError(e.toString().replaceFirst('Exception: ', ''));
     }
   }
 
@@ -339,8 +349,7 @@ https://your-invite-link.com
                   shape: const RoundedRectangleBorder(),
                 ),
                 child: const Row(
-                  mainAxisAlignment:
-                  MainAxisAlignment.center,
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     _WhatsAppIcon(),
                     SizedBox(width: 9),
@@ -395,12 +404,14 @@ class _WhatsAppIcon extends StatelessWidget {
       width: 19,
       height: 19,
       alignment: Alignment.center,
-      decoration: BoxDecoration(
+      decoration: const BoxDecoration(
         shape: BoxShape.circle,
-
       ),
-      child: Image.asset("assets/images/whatsapp.png",
-        width: 18,height: 18,),
+      child: Image.asset(
+        "assets/images/whatsapp.png",
+        width: 18,
+        height: 18,
+      ),
     );
   }
 }

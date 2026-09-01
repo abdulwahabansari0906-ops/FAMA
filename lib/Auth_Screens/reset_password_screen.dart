@@ -1,4 +1,3 @@
-import 'package:fama/Auth_Screens/reset_password_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -6,36 +5,46 @@ import '../services and managers/forget_password_service.dart';
 import '../widgets/app_helper.dart';
 import 'login_screen.dart';
 
-class ForgotPasswordScreen extends StatefulWidget {
-  const ForgotPasswordScreen({super.key});
+class ResetPasswordScreen extends StatefulWidget {
+  const ResetPasswordScreen({
+    super.key,
+    required this.phoneNumber,
+    required this.resetToken,
+  });
+
+  final String phoneNumber;
+  final String resetToken;
 
   @override
-  State<ForgotPasswordScreen> createState() => _ForgotPasswordScreenState();
+  State<ResetPasswordScreen> createState() => _ResetPasswordScreenState();
 }
 
-class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
-  final _phoneController = TextEditingController();
+class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
+  final _newPasswordController = TextEditingController();
 
-  Future<void> _handleSendOtp() async {
-    final phone = _phoneController.text.trim();
+  Future<void> _handleResetPassword() async {
+    final newPassword = _newPasswordController.text.trim();
 
-    if (phone.isEmpty) {
-      AppHelpers.showError('Phone number required hai.');
+    if (newPassword.isEmpty) {
+      AppHelpers.showError('New password required hai.');
+      return;
+    }
+    if (newPassword.length < 6) {
+      AppHelpers.showError('Password kam se kam 6 characters ka hona chahiye.');
       return;
     }
 
     AppHelpers.showLoader();
     try {
-      final response = await ForgotPasswordService.sendResetToken(
-        phoneNumber: phone,
+      final message = await ForgotPasswordService.resetPassword(
+        phoneNumber: widget.phoneNumber,
+        token: widget.resetToken,
+        newPassword: newPassword,
       );
       AppHelpers.hideLoader();
-      AppHelpers.showSuccess(response.message);
+      AppHelpers.showSuccess(message);
 
-      Get.to(() => ResetPasswordScreen(
-        phoneNumber: phone,
-        resetToken: response.token,
-      ));
+      Get.offAll(() => LoginScreen());
     } catch (e) {
       AppHelpers.hideLoader();
       AppHelpers.showError(e.toString().replaceFirst('Exception: ', ''));
@@ -44,7 +53,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
   @override
   void dispose() {
-    _phoneController.dispose();
+    _newPasswordController.dispose();
     super.dispose();
   }
 
@@ -81,21 +90,28 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
               ),
               const SizedBox(height: 12),
               const Text(
-                'Forgot Password',
+                'Reset Password',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                     fontSize: 18, fontWeight: FontWeight.bold, fontFamily: "Rob"),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Apna naya password enter karein',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    fontSize: 13, color: Colors.black54, fontFamily: "Rob"),
               ),
               const SizedBox(height: 24),
 
               SizedBox(
                 height: 50,
                 child: TextField(
-                  controller: _phoneController,
-                  keyboardType: TextInputType.phone,
+                  controller: _newPasswordController,
+                  obscureText: true,
                   style: const TextStyle(fontFamily: "Rob"),
                   decoration: const InputDecoration(
-                    hintText: "Phone Number",
+                    hintText: "New Password",
                     hintStyle: TextStyle(fontFamily: "Rob"),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.all(Radius.circular(10)),
@@ -113,7 +129,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: _handleSendOtp,
+                  onPressed: _handleResetPassword,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.black,
                     foregroundColor: Colors.white,
@@ -123,7 +139,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                     ),
                   ),
                   child: const Text(
-                    'Next',
+                    'Reset Password',
                     style: TextStyle(fontWeight: FontWeight.w600, fontFamily: "Rob"),
                   ),
                 ),
@@ -133,7 +149,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
               Center(
                 child: GestureDetector(
                   onTap: () {
-                    Get.to(() => LoginScreen());
+                    Get.offAll(() => LoginScreen());
                   },
                   child: const Text(
                     'Back To Login',
