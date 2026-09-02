@@ -1,18 +1,30 @@
 import 'package:flutter/material.dart';
+import '../services and managers/leader_board_services.dart';
+import '../services and managers/location_list_service.dart';
+import '../services and managers/school_list_service.dart';
 import '../widgets/fama_bottom_nav.dart';
 import '../Feed_screen/post_now_popup.dart';
+import '../widgets/gender_picker_drop_sheet.dart';
+import '../widgets/picker_sheet.dart';
+import '../services and managers/profile_service.dart';
+import '../services and managers/session_manager.dart';
+import '../widgets/app_helper.dart';
 
-class LeaderboardUser {
+/// Internal unified shape used to render both the users-leaderboard
+/// and videos-leaderboard grids with the same card UI.
+class _LeaderboardDisplayItem {
   final int rank;
   final String name;
-  final String image;
-  final String stars;
+  final String? avatarUrl;
+  final int points;
+  final bool isVideo;
 
-  const LeaderboardUser({
+  const _LeaderboardDisplayItem({
     required this.rank,
     required this.name,
-    required this.image,
-    required this.stars,
+    required this.avatarUrl,
+    required this.points,
+    this.isVideo = false,
   });
 }
 
@@ -35,24 +47,151 @@ class _RankingScreenState extends State<RankingScreen> {
   // 'Day' | 'Week' | 'Month' | 'All Time'
   String _selectedTimeFilter = 'All Time';
 
-  static const List<LeaderboardUser> _users = [
-    LeaderboardUser(rank: 1, name: 'Savannah', image: 'assets/images/f1.png', stars: '365'),
-    LeaderboardUser(rank: 2, name: 'Devon Lane', image: 'assets/images/f2.png', stars: '365'),
-    LeaderboardUser(rank: 3, name: 'Annette', image: 'assets/images/f3.png', stars: '365'),
-    LeaderboardUser(rank: 4, name: 'Janny', image: 'assets/images/f4.png', stars: '365'),
-    LeaderboardUser(rank: 5, name: 'Devon Lane', image: 'assets/images/f5.png', stars: '365'),
-    LeaderboardUser(rank: 6, name: 'Robert Fox', image: 'assets/images/f6.png', stars: '365'),
-    LeaderboardUser(rank: 7, name: 'Annette', image: 'assets/images/f7.png', stars: '365'),
-    LeaderboardUser(rank: 8, name: 'Eleanor Pena', image: 'assets/images/f8.png', stars: '365'),
-    LeaderboardUser(rank: 9, name: 'Kathryn', image: 'assets/images/f1.png', stars: '365'),
-    LeaderboardUser(rank: 10, name: 'Albert Flores', image: 'assets/images/f2.png', stars: '365'),
-    LeaderboardUser(rank: 11, name: 'Cameron', image: 'assets/images/f3.png', stars: '365'),
-    LeaderboardUser(rank: 12, name: 'Jacob Jones', image: 'assets/images/f4.png', stars: '365'),
-    LeaderboardUser(rank: 13, name: 'Hawkins', image: 'assets/images/f5.png', stars: '365'),
-    LeaderboardUser(rank: 14, name: 'McKinney', image: 'assets/images/f6.png', stars: '365'),
-    LeaderboardUser(rank: 15, name: 'Alexander', image: 'assets/images/f7.png', stars: '365'),
-    LeaderboardUser(rank: 16, name: 'Howard', image: 'assets/images/f8.png', stars: '365'),
-  ];
+  // Filter chip selections
+  PickerItem? _selectedLocation;
+  PickerItem? _selectedSchool;
+  String? _selectedGender;
+
+  // Top bar star pill — live fama points
+  int _famaPoints = 0;
+
+  // Leaderboard data
+  List<LeaderboardUserEntry> _leaderboardUsers = [];
+  List<LeaderboardVideoEntry> _leaderboardVideos = [];
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _fetchFamaPoints();
+      _fetchLeaderboard();
+    });
+  }
+
+  // ── Fama points fetch (top bar star pill ke liye) ─────────────────────
+
+  Future<void> _fetchFamaPoints() async {
+    final String? token = SessionManager.accessToken;
+    if (token == null || token.trim().isEmpty) return;
+
+    try {
+      final profile = await ProfileApiService.getProfile(token: token);
+      if (!mounted) return;
+      setState(() => _famaPoints = profile.user.famaPoints);
+    } catch (e) {
+      debugPrint('RANKING DEBUG -> fama points fetch error: $e');
+      // Silent fail — top bar bas 0 ya last known value dikhata rahega.
+    }
+  }
+
+  // ── Leaderboard fetch ───────────────────────────────────────────────
+
+  LeaderboardRange _rangeFromFilter(String filter) {
+    switch (filter) {
+      case 'Day':
+        return LeaderboardRange.day;
+      case 'Week':
+        return LeaderboardRange.week;
+      case 'Month':
+        return LeaderboardRange.month;
+      case 'All Time':
+      default:
+        return LeaderboardRange.all;
+    }
+  }
+
+  Future<void> _fetchLeaderboard() async {
+    final String? token = SessionManager.accessToken;
+    if (token == null || token.trim().isEmpty) {
+      AppHelpers.showError('Session expired. Please log in again.');
+      return;
+    }
+
+    final LeaderboardRange range = _rangeFromFilter(_selectedTimeFilter);
+    final int? locationId =
+    _selectedLocation != null ? int.tryParse(_selectedLocation!.id) : null;
+    final int? schoolId =
+    _selectedSchool != null ? int.tryParse(_selectedSchool!.id) : null;
+    final String? gender = _selectedGender?.toLowerCase();
+
+    AppHelpers.showLoader();
+
+    try {
+      if (_isCelebritiesTab) {
+        final List<LeaderboardUserEntry> users =
+        await LeaderboardService.fetchUsers(
+          token: token,
+          range: range,
+          locationId: locationId,
+          schoolId: schoolId,
+          gender: gender,
+        );
+        if (!mounted) return;
+        setState(() => _leaderboardUsers = users);
+      } else {
+        final List<LeaderboardVideoEntry> videos =
+        await LeaderboardService.fetchVideos(
+          token: token,
+          range: range,
+          locationId: locationId,
+          schoolId: schoolId,
+          gender: gender,
+        );
+        if (!mounted) return;
+        setState(() => _leaderboardVideos = videos);
+      }
+    } catch (e) {
+      AppHelpers.showError(e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      AppHelpers.hideLoader();
+    }
+  }
+
+  // ── Filter pickers ──────────────────────────────────────────────────
+
+  Future<void> _pickLocation() async {
+    final result = await showSearchablePicker(
+      context: context,
+      title: 'Location',
+      fetcher: (search) async {
+        final list = await LocationService.fetchLocations(search: search);
+        return list
+            .map((e) => PickerItem(id: e.id.toString(), label: e.name))
+            .toList();
+      },
+    );
+    if (result != null) {
+      setState(() => _selectedLocation = result);
+      _fetchLeaderboard();
+    }
+  }
+
+  Future<void> _pickSchool() async {
+    final result = await showSearchablePicker(
+      context: context,
+      title: 'School',
+      fetcher: (search) async {
+        final list = await SchoolService.fetchSchools(search: search);
+        return list
+            .map((e) => PickerItem(id: e.id.toString(), label: e.name))
+            .toList();
+      },
+    );
+    if (result != null) {
+      setState(() => _selectedSchool = result);
+      _fetchLeaderboard();
+    }
+  }
+
+  Future<void> _pickGender() async {
+    final result = await showGenderPicker(context, selected: _selectedGender);
+    if (result != null) {
+      setState(() => _selectedGender = result);
+      _fetchLeaderboard();
+    }
+  }
+
+  // ── UI ───────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -70,22 +209,7 @@ class _RankingScreenState extends State<RankingScreen> {
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: Column(
-                  children: [
-                    _buildUserRow(_users.sublist(0, 4)),
-                    const SizedBox(height: 18),
-                    _sectionLabel('Top 4'),
-                    const SizedBox(height: 14),
-                    _buildUserRow(_users.sublist(4, 8)),
-                    const SizedBox(height: 18),
-                    _sectionLabel('Top 8'),
-                    const SizedBox(height: 14),
-                    _buildUserRow(_users.sublist(8, 12)),
-                    const SizedBox(height: 18),
-                    _buildUserRow(_users.sublist(12, 16)),
-                    const SizedBox(height: 16),
-                  ],
-                ),
+                child: _buildLeaderboardBody(),
               ),
             ),
           ],
@@ -127,14 +251,14 @@ class _RankingScreenState extends State<RankingScreen> {
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
-                  children:  [
+                  children: [
                     Image.asset(
                       'assets/images/whatsapp.png',
                       width: 14,
                       height: 14,
                     ),
-                    SizedBox(width: 5),
-                    Text(
+                    const SizedBox(width: 5),
+                    const Text(
                       'Invite',
                       style: TextStyle(
                         fontFamily: 'Rob',
@@ -147,7 +271,7 @@ class _RankingScreenState extends State<RankingScreen> {
                 ),
               ),
               const SizedBox(width: 8),
-              // Star count pill
+              // Star count pill — ab live fama points dikhata hai
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
                 decoration: BoxDecoration(
@@ -157,12 +281,12 @@ class _RankingScreenState extends State<RankingScreen> {
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
-                  children: const [
-                    Icon(Icons.star_rounded, color: Color(0xFFFFC839), size: 14),
-                    SizedBox(width: 4),
+                  children: [
+                    const Icon(Icons.star_rounded, color: Color(0xFFFFC839), size: 14),
+                    const SizedBox(width: 4),
                     Text(
-                      '365',
-                      style: TextStyle(
+                      '$_famaPoints',
+                      style: const TextStyle(
                         fontFamily: 'Rob',
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
@@ -195,7 +319,12 @@ class _RankingScreenState extends State<RankingScreen> {
 
   Widget _tabItem(String label, {required bool isSelected}) {
     return GestureDetector(
-      onTap: () => setState(() => _isCelebritiesTab = label == 'Celebrities'),
+      onTap: () {
+        final bool wantsCelebrities = label == 'Celebrities';
+        if (wantsCelebrities == _isCelebritiesTab) return; // already on this tab
+        setState(() => _isCelebritiesTab = wantsCelebrities);
+        _fetchLeaderboard();
+      },
       behavior: HitTestBehavior.opaque,
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12),
@@ -227,42 +356,60 @@ class _RankingScreenState extends State<RankingScreen> {
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
       child: Row(
         children: [
-          Expanded(child: _dropdownChip('Location')),
+          Expanded(
+            child: _dropdownChip(
+              _selectedLocation?.label ?? 'Location',
+              onTap: _pickLocation,
+            ),
+          ),
           const SizedBox(width: 8),
-          Expanded(child: _dropdownChip('School')),
+          Expanded(
+            child: _dropdownChip(
+              _selectedSchool?.label ?? 'School',
+              onTap: _pickSchool,
+            ),
+          ),
           const SizedBox(width: 8),
-          Expanded(child: _dropdownChip('Gender')),
+          Expanded(
+            child: _dropdownChip(
+              _selectedGender ?? 'Gender',
+              onTap: _pickGender,
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _dropdownChip(String label) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF5F5F5),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: _borderColor),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Flexible(
-            child: Text(
-              label,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontFamily: 'Rob',
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-                color: _darkColor,
+  Widget _dropdownChip(String label, {required VoidCallback onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF5F5F5),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: _borderColor),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Flexible(
+              child: Text(
+                label,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontFamily: 'Rob',
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: _darkColor,
+                ),
               ),
             ),
-          ),
-          const SizedBox(width: 4),
-          const Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: _darkColor),
-        ],
+            const SizedBox(width: 4),
+            const Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: _darkColor),
+          ],
+        ),
       ),
     );
   }
@@ -278,7 +425,11 @@ class _RankingScreenState extends State<RankingScreen> {
 
           return Expanded(
             child: GestureDetector(
-              onTap: () => setState(() => _selectedTimeFilter = filter),
+              onTap: () {
+                if (_selectedTimeFilter == filter) return;
+                setState(() => _selectedTimeFilter = filter);
+                _fetchLeaderboard();
+              },
               child: Container(
                 margin: const EdgeInsets.symmetric(horizontal: 4),
                 padding: const EdgeInsets.symmetric(vertical: 8),
@@ -333,20 +484,108 @@ class _RankingScreenState extends State<RankingScreen> {
             height: 1,
           ),
         ),
-
       ],
     );
   }
 
-  Widget _buildUserRow(List<LeaderboardUser> users) {
-    return Row(
-      children: users.map((user) {
-        return Expanded(child: _userCard(user));
-      }).toList(),
+  // ── Leaderboard grid (dynamic, dono tabs ke liye shared) ──────────────
+
+  List<_LeaderboardDisplayItem> _currentItems() {
+    if (_isCelebritiesTab) {
+      final List<_LeaderboardDisplayItem> items = [];
+      for (int i = 0; i < _leaderboardUsers.length; i++) {
+        final LeaderboardUserEntry entry = _leaderboardUsers[i];
+        items.add(_LeaderboardDisplayItem(
+          rank: i + 1,
+          name: (entry.name != null && entry.name!.trim().isNotEmpty)
+              ? entry.name!
+              : 'Unnamed',
+          avatarUrl: entry.avatarUrl,
+          points: entry.points,
+        ));
+      }
+      return items;
+    } else {
+      final List<_LeaderboardDisplayItem> items = [];
+      for (int i = 0; i < _leaderboardVideos.length; i++) {
+        final LeaderboardVideoEntry entry = _leaderboardVideos[i];
+        items.add(_LeaderboardDisplayItem(
+          rank: i + 1,
+          name: (entry.userName != null && entry.userName!.trim().isNotEmpty)
+              ? entry.userName!
+              : 'Unnamed',
+          avatarUrl: entry.thumbnailUrl,
+          points: entry.points,
+          isVideo: true,
+        ));
+      }
+      return items;
+    }
+  }
+
+  List<List<_LeaderboardDisplayItem>> _chunk(
+      List<_LeaderboardDisplayItem> items, int size) {
+    final List<List<_LeaderboardDisplayItem>> chunks = [];
+    for (int i = 0; i < items.length; i += size) {
+      final int end = (i + size > items.length) ? items.length : i + size;
+      chunks.add(items.sublist(i, end));
+    }
+    return chunks;
+  }
+
+  Widget _buildLeaderboardBody() {
+    final List<_LeaderboardDisplayItem> items = _currentItems();
+
+    if (items.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 40),
+        child: Center(
+          child: Text(
+            'No entries yet.',
+            style: TextStyle(
+              fontFamily: 'Rob',
+              fontSize: 13,
+              color: Colors.grey,
+            ),
+          ),
+        ),
+      );
+    }
+
+    final List<List<_LeaderboardDisplayItem>> rows = _chunk(items, 4);
+
+    return Column(
+      children: [
+        for (int i = 0; i < rows.length; i++) ...[
+          _buildItemRow(rows[i]),
+          if (i != rows.length - 1) ...[
+            const SizedBox(height: 18),
+            _sectionLabel(
+              'Top ${((i + 1) * 4) > items.length ? items.length : (i + 1) * 4}',
+            ),
+            const SizedBox(height: 14),
+          ],
+        ],
+        const SizedBox(height: 16),
+      ],
     );
   }
 
-  Widget _userCard(LeaderboardUser user) {
+  Widget _buildItemRow(List<_LeaderboardDisplayItem> items) {
+    final List<Widget> children =
+    items.map((item) => Expanded(child: _itemCard(item))).toList();
+
+    // Aakhri row incomplete ho to bhi 4-column alignment barqarar rahe.
+    while (children.length < 4) {
+      children.add(const Expanded(child: SizedBox.shrink()));
+    }
+
+    return Row(children: children);
+  }
+
+  Widget _itemCard(_LeaderboardDisplayItem item) {
+    final bool hasImage = item.avatarUrl != null && item.avatarUrl!.isNotEmpty;
+
     return Column(
       children: [
         Stack(
@@ -355,7 +594,16 @@ class _RankingScreenState extends State<RankingScreen> {
             CircleAvatar(
               radius: 32,
               backgroundColor: const Color(0xFFE4E8ED),
-              backgroundImage: AssetImage(user.image),
+              backgroundImage: hasImage ? NetworkImage(item.avatarUrl!) : null,
+              child: !hasImage
+                  ? Icon(
+                item.isVideo
+                    ? Icons.play_circle_fill_rounded
+                    : Icons.person_rounded,
+                color: Colors.grey,
+                size: 28,
+              )
+                  : null,
             ),
             Positioned(
               top: -4,
@@ -369,7 +617,7 @@ class _RankingScreenState extends State<RankingScreen> {
                 ),
                 child: Center(
                   child: Text(
-                    '${user.rank}',
+                    '${item.rank}',
                     style: const TextStyle(
                       fontFamily: 'Rob',
                       fontSize: 11,
@@ -384,7 +632,7 @@ class _RankingScreenState extends State<RankingScreen> {
         ),
         const SizedBox(height: 6),
         Text(
-          user.name,
+          item.name,
           overflow: TextOverflow.ellipsis,
           style: const TextStyle(
             fontFamily: 'Rob',
@@ -400,7 +648,7 @@ class _RankingScreenState extends State<RankingScreen> {
             const Icon(Icons.star_rounded, color: Color(0xFFFFC839), size: 13),
             const SizedBox(width: 2),
             Text(
-              user.stars,
+              '${item.points}',
               style: const TextStyle(
                 fontFamily: 'Rob',
                 fontSize: 11,

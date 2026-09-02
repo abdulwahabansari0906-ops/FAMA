@@ -10,6 +10,7 @@ class FeedPost {
   final int famaPoints;
   final int viewsCount;
   final int sharesCount;
+  final int commentsCount;
   final bool allowComments;
   final DateTime createdAt;
   final String userName;
@@ -19,6 +20,10 @@ class FeedPost {
   final int schoolId;
   final String schoolName;
 
+  /// Whether the currently logged-in user has already given FAMA (star)
+  /// to this post.
+  final bool isLiked;
+
   const FeedPost({
     required this.id,
     required this.userId,
@@ -26,6 +31,7 @@ class FeedPost {
     required this.famaPoints,
     required this.viewsCount,
     required this.sharesCount,
+    required this.commentsCount,
     required this.allowComments,
     required this.createdAt,
     required this.userName,
@@ -34,6 +40,7 @@ class FeedPost {
     required this.locationName,
     required this.schoolId,
     required this.schoolName,
+    required this.isLiked,
     this.thumbnailUrl,
   });
 
@@ -46,7 +53,8 @@ class FeedPost {
       famaPoints: json['fama_points'] as int? ?? 0,
       viewsCount: json['views_count'] as int? ?? 0,
       sharesCount: json['shares_count'] as int? ?? 0,
-      allowComments: (json['allow_comments'] as int? ?? 1) == 1,
+      commentsCount: json['comments_count'] as int? ?? 0,
+      allowComments: _parseBool(json['allow_comments'], defaultValue: true),
       createdAt:
       DateTime.tryParse(json['created_at'] as String? ?? '') ??
           DateTime.now(),
@@ -56,7 +64,23 @@ class FeedPost {
       locationName: json['location_name'] as String? ?? '',
       schoolId: json['school_id'] as int? ?? 0,
       schoolName: json['school_name'] as String? ?? '',
+      isLiked: _parseBool(json['is_liked'], defaultValue: false),
     );
+  }
+
+  /// Parses a value that may come back from the API as a real bool
+  /// (`true`/`false`), an int (`1`/`0`), or a string (`"true"`/`"1"`) into
+  /// a Dart [bool] — avoids type-cast crashes when the backend's field
+  /// type changes between endpoints/versions.
+  static bool _parseBool(dynamic value, {required bool defaultValue}) {
+    if (value == null) return defaultValue;
+    if (value is bool) return value;
+    if (value is int) return value == 1;
+    if (value is String) {
+      final String normalized = value.trim().toLowerCase();
+      return normalized == 'true' || normalized == '1';
+    }
+    return defaultValue;
   }
 
   /// "3 Hrs Ago" style relative label for the UI.

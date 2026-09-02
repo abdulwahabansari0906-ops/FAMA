@@ -1,15 +1,54 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:get/get_core/src/get_main.dart';
+import 'package:get/get_navigation/src/extension_navigation.dart';
 import 'package:image_picker/image_picker.dart';
 import 'create_post_screen.dart';
+import '../services and managers/post_eligibility_service.dart';
+import '../services and managers/session_manager.dart';
+import '../widgets/app_helper.dart';
 
-/// "+" button dabane par ye popup dikhta hai — Post TikTok / Create Post / Upload Post.
+/// "+" button dabane par pehle posting-eligibility check hoti hai
+/// (session token ke sath), phir agar allowed ho to
+/// Post TikTok / Create Post / Upload Post popup dikhta hai.
 /// Feed screen (ya kisi bhi screen) se call karo:
 /// ```dart
 /// onPostTap: () => showPostNowPopup(context),
 /// ```
-Future<void> showPostNowPopup(BuildContext context) {
-  return showGeneralDialog(
+Future<void> showPostNowPopup(BuildContext context) async {
+  final String? token = SessionManager.accessToken;
+
+  if (token == null || token.trim().isEmpty) {
+    AppHelpers.showError('Session expired. Please log in again.');
+    return;
+  }
+
+  if (Get.isDialogOpen == true) return; // already loading
+
+  AppHelpers.showLoader();
+
+  PostEligibilityResponse eligibility;
+  try {
+    eligibility = await PostEligibilityService.checkEligibility(token: token);
+  } catch (e) {
+    AppHelpers.hideLoader();
+    AppHelpers.showError(e.toString().replaceFirst('Exception: ', ''));
+    return;
+  }
+
+  AppHelpers.hideLoader();
+
+  if (!eligibility.canPost) {
+    AppHelpers.showInfo(
+      'You can post again in ${eligibility.remainingFormatted}.',
+      title: 'Posting limit reached',
+    );
+    return;
+  }
+
+  if (!context.mounted) return;
+
+  await showGeneralDialog(
     context: context,
     barrierDismissible: true,
     barrierLabel: 'Post Now',

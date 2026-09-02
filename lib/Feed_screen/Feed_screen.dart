@@ -1,6 +1,9 @@
+import 'package:fama/Feed_screen/public_profile_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import '../services and managers/feed_service.dart';
+import '../services and managers/fama_like_api_service.dart';
+import '../services and managers/post_views_api_service.dart';
 import '../services and managers/session_manager.dart';
 import '../widgets/app_helper.dart';
 import '../widgets/fama_bottom_nav.dart';
@@ -35,6 +38,26 @@ class _FeedScreenState extends State<FeedScreen> {
   bool _initialLoadFailed = false;
   String _errorMessage = '';
 
+  // Post ids jinka view is session mein already register ho chuka hai —
+  // taake ek hi post ka view baar baar (rebuild/re-swipe par) count na ho.
+  final Set<int> _viewedPostIds = {};
+
+  // Post ids jinhein currently FAMA (star) diya hua hai — star icon ka
+  // filled/amber state isi se decide hota hai. Har feed fetch (initial
+  // + load more) ke baad backend ke `is_liked` field se sync hota hai,
+  // is liye pehle se liya hua FAMA app restart/navigation ke baad bhi
+  // sahi (server-backed) filled state mein dikhta hai.
+  final Set<int> _famaGivenPostIds = {};
+
+  // Post ids jinke liye FAMA give/remove request abhi in-flight hai —
+  // taake ek hi post par tap ko baar baar spam na kiya ja sake.
+  final Set<int> _famaPendingPostIds = {};
+
+  // Har post ka displayed FAMA count — APIs updated count wapas nahi
+  // dete, is liye tap hote hi yahan locally +1/-1 kar dete hain taake
+  // count turant (optimistically) update dikhe.
+  final Map<int, int> _famaPointsOverride = {};
+
   @override
   void initState() {
     super.initState();
@@ -59,9 +82,6 @@ class _FeedScreenState extends State<FeedScreen> {
     debugPrint('FEED DEBUG -> token: $token');
 
     if (token == null || token.trim().isEmpty) {
-      // IMPORTANT: pehle yahan sirf toast dikha ke return ho raha tha,
-      // isLoading/_initialLoadFailed update nahi hota tha -> screen hamesha
-      // ke liye blank reh jaati thi (sirf top filters dikhte thay).
       if (!mounted) return;
       setState(() {
         _isLoading = false;
@@ -91,9 +111,16 @@ class _FeedScreenState extends State<FeedScreen> {
         _page = 1;
         _hasMore = posts.length == _perPage;
         _isLoading = false;
-        _initialLoadFailed = posts.isEmpty; // empty ho to bhi feedback dikhao
+        _initialLoadFailed = posts.isEmpty;
         _errorMessage = posts.isEmpty ? 'No posts found yet.' : '';
+        _syncFamaStateFromServer(posts);
       });
+
+      // Feed load hote hi jo pehla post screen par dikhta hai, uska view
+      // bhi register karo (baaki posts ka _onPageChanged handle karta hai).
+      if (posts.isNotEmpty) {
+        _registerView(posts.first);
+      }
     } catch (e) {
       debugPrint('FEED DEBUG -> error: $e');
       if (!mounted) return;
@@ -128,6 +155,7 @@ class _FeedScreenState extends State<FeedScreen> {
         _page += 1;
         _hasMore = posts.length == _perPage;
         _isLoadingMore = false;
+        _syncFamaStateFromServer(posts);
       });
     } catch (e) {
       if (!mounted) return;
@@ -136,11 +164,125 @@ class _FeedScreenState extends State<FeedScreen> {
     }
   }
 
+  /// Syncs [_famaGivenPostIds] with the `is_liked` flag from freshly
+  /// fetched [posts]. Skips any post with a toggle currently in-flight,
+  /// so a server response can't clobber a tap the user just made.
+  ///
+  /// Must be called from inside a `setState`.
+  void _syncFamaStateFromServer(List<FeedPost> posts) {
+    for (final FeedPost post in posts) {
+      if (_famaPendingPostIds.contains(post.id)) continue;
+
+      if (post.isLiked) {
+        _famaGivenPostIds.add(post.id);
+      } else {
+        _famaGivenPostIds.remove(post.id);
+      }
+    }
+  }
+
   void _onPageChanged(int index) {
     setState(() => _currentIndex = index);
+    _registerView(_posts[index]);
+
     if (index >= _posts.length - 3) {
       _loadMore();
     }
+  }
+
+  /// Registers a view for [post] with the backend — once per post per
+  /// session. Silent/best-effort: failures are logged, not shown to the
+  /// user, and the post is allowed to retry on its next view if it fails.
+  void _registerView(FeedPost post) {
+    if (_viewedPostIds.contains(post.id)) return; // already counted
+
+    final String? token = SessionManager.accessToken;
+    if (token == null || token.trim().isEmpty) return;
+
+    _viewedPostIds.add(post.id);
+
+    PostViewApiService.incrementView(
+      token: token,
+      postId: post.id,
+    ).catchError((Object e) {
+      debugPrint('View increment failed for post ${post.id}: $e');
+      _viewedPostIds.remove(post.id); // allow retry on next view
+    });
+  }
+
+  /// The count currently shown for [post] — uses the locally-tracked
+  /// override if the user has toggled FAMA this session, otherwise falls
+  /// back to the count from the feed API.
+  int _currentFamaCount(FeedPost post) {
+    return _famaPointsOverride[post.id] ?? post.famaPoints;
+  }
+
+  /// Toggles the FAMA (star) on [post] — gives it if not already given,
+  /// removes it otherwise. Updates the UI optimistically (instantly:
+  /// icon + count), persists the new state locally (so it survives
+  /// navigation/app restarts), then confirms with the backend in the
+  /// background — reverting everything and showing an error if the
+  /// request fails.
+  Future<void> _toggleFama(FeedPost post) async {
+    if (_famaPendingPostIds.contains(post.id)) return; // already in-flight
+
+    final String? token = SessionManager.accessToken;
+    if (token == null || token.trim().isEmpty) {
+      AppHelpers.showError('Session expired. Please log in again.');
+      return;
+    }
+
+    final bool wasGiven = _famaGivenPostIds.contains(post.id);
+    final int countBeforeToggle = _currentFamaCount(post);
+
+    setState(() {
+      _famaPendingPostIds.add(post.id);
+      if (wasGiven) {
+        _famaGivenPostIds.remove(post.id);
+        _famaPointsOverride[post.id] = countBeforeToggle - 1;
+      } else {
+        _famaGivenPostIds.add(post.id);
+        _famaPointsOverride[post.id] = countBeforeToggle + 1;
+      }
+    });
+
+    try {
+      if (wasGiven) {
+        await FamaApiService.removeFama(token: token, postId: post.id);
+      } else {
+        await FamaApiService.giveFama(token: token, postId: post.id);
+      }
+    } catch (e) {
+      debugPrint('FAMA toggle failed for post ${post.id}: $e');
+      if (!mounted) return;
+
+      // Revert the optimistic update since the request failed.
+      setState(() {
+        if (wasGiven) {
+          _famaGivenPostIds.add(post.id);
+        } else {
+          _famaGivenPostIds.remove(post.id);
+        }
+        _famaPointsOverride[post.id] = countBeforeToggle;
+      });
+
+      AppHelpers.showError(e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) {
+        setState(() => _famaPendingPostIds.remove(post.id));
+      }
+    }
+  }
+
+  /// Avatar/name par tap karne se us user ka public profile screen khulta
+  /// hai (token session se aata hai, target_id post ka user_id hota hai).
+  void _openPosterProfile(FeedPost post) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PublicProfileScreen(targetId: post.userId),
+      ),
+    );
   }
 
   // ── UI ────────────────────────────────────────────────────────────────
@@ -244,14 +386,11 @@ class _FeedScreenState extends State<FeedScreen> {
             children: [
               _actionButton(icon: Icons.reply, count: '${post.sharesCount}'),
               const SizedBox(height: 18),
-              _actionButton(
-                icon: Icons.star_border_rounded,
-                count: '${post.famaPoints}',
-              ),
+              _famaActionButton(post),
               const SizedBox(height: 18),
               _actionButton(
                 icon: Icons.chat_bubble_outline_rounded,
-                count: post.allowComments ? '0' : '—',
+                count: '${post.commentsCount}',
               ),
             ],
           ),
@@ -301,6 +440,43 @@ class _FeedScreenState extends State<FeedScreen> {
     );
   }
 
+  /// Tappable star button — filled amber when FAMA is given to this post,
+  /// plain outline otherwise. Tapping toggles it via [_toggleFama].
+  Widget _famaActionButton(FeedPost post) {
+    final bool isGiven = _famaGivenPostIds.contains(post.id);
+
+    return GestureDetector(
+      onTap: () => _toggleFama(post),
+      child: Column(
+        children: [
+          Container(
+            height: 44,
+            width: 44,
+            decoration: BoxDecoration(
+              color: Colors.black.withOpacity(0.3),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              isGiven ? Icons.star_rounded : Icons.star_border_rounded,
+              color: isGiven ? _accentColor : Colors.white,
+              size: 22,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '${_currentFamaCount(post)}',
+            style: const TextStyle(
+              fontFamily: 'Rob',
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: Colors.white,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _actionButton({required IconData icon, required String count}) {
     return Column(
       children: [
@@ -329,7 +505,7 @@ class _FeedScreenState extends State<FeedScreen> {
 
   Widget _buildBottomInfo(FeedPost post) {
     return Padding(
-      padding: const EdgeInsets.only(right: 10,left: 10,bottom: 30),
+      padding: const EdgeInsets.only(right: 10, left: 10, bottom: 30),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -356,24 +532,30 @@ class _FeedScreenState extends State<FeedScreen> {
           // Avatar + name + star rating
           Row(
             children: [
-              CircleAvatar(
-                radius: 20,
-                backgroundColor: const Color(0xFF3A3F47),
-                backgroundImage: post.avatarUrl.isNotEmpty
-                    ? NetworkImage(post.avatarUrl)
-                    : null,
+              GestureDetector(
+                onTap: () => _openPosterProfile(post),
+                child: CircleAvatar(
+                  radius: 20,
+                  backgroundColor: const Color(0xFF3A3F47),
+                  backgroundImage: post.avatarUrl.isNotEmpty
+                      ? NetworkImage(post.avatarUrl)
+                      : null,
+                ),
               ),
               const SizedBox(width: 10),
               Flexible(
-                child: Text(
-                  post.userName,
-                  style: const TextStyle(
-                    fontFamily: 'Rob',
-                    fontSize: 17,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
+                child: GestureDetector(
+                  onTap: () => _openPosterProfile(post),
+                  child: Text(
+                    post.userName,
+                    style: const TextStyle(
+                      fontFamily: 'Rob',
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  overflow: TextOverflow.ellipsis,
                 ),
               ),
               const SizedBox(width: 10),

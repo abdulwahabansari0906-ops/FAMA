@@ -13,6 +13,7 @@ class SessionManager {
   static const _keyUserId = 'user_id';
   static const _keyPhone = 'phone_number';
   static const _keyOnboardingDone = 'is_onboarding_completed';
+  static const _keyFamaPoints = 'fama_points'; // NEW
 
   // ── Save session ──────────────────────────────────────────────
 
@@ -21,6 +22,8 @@ class SessionManager {
     await _box.write(_keyUserId, response.data.userId);
     await _box.write(_keyPhone, response.data.phoneNumber);
     await _box.write(_keyOnboardingDone, response.data.isOnboardingCompleted);
+    // agar SignupResponse.data mein points field hai to yahan bhi save karo:
+    // await _box.write(_keyFamaPoints, response.data.famaPoints);
   }
 
   static Future<void> saveLoginSession(LoginResponse response) async {
@@ -28,6 +31,14 @@ class SessionManager {
     await _box.write(_keyUserId, response.data.userId);
     await _box.write(_keyPhone, response.data.phoneNumber);
     await _box.write(_keyOnboardingDone, response.data.isOnboardingCompleted);
+    // agar LoginResponse.data mein points field hai to yahan bhi save karo:
+    // await _box.write(_keyFamaPoints, response.data.famaPoints);
+  }
+
+  /// Kahin bhi (e.g. profile/points API se) fresh points aane par isay
+  /// call karke session update kar sakte ho.
+  static Future<void> updateFamaPoints(int points) async {
+    await _box.write(_keyFamaPoints, points);
   }
 
   // ── Read session ──────────────────────────────────────────────
@@ -39,6 +50,9 @@ class SessionManager {
       (_box.read(_keyOnboardingDone) ?? 0) == 1;
   static bool get isLoggedIn =>
       (_box.read(_keyToken) ?? '').toString().isNotEmpty;
+
+  /// Current logged-in user ke fama points. Kabhi na milay to '0'.
+  static int get famaPoints => (_box.read(_keyFamaPoints) ?? 0) as int;
 
   // ── Clear / logout ───────────────────────────────────────────
 

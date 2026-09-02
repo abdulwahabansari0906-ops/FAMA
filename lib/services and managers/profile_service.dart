@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
@@ -121,22 +122,31 @@ class ProfileApiService {
   static const String _profileUrl = 'https://fama.digitalpreps.com/api/profile';
 
   /// Fetches the logged-in user's profile (info + posts) using their
-  /// bearer [token]. Throws an [Exception] with a user-facing message
-  /// on failure.
+  /// bearer [token]. Server route only accepts POST (not GET). Throws an
+  /// [Exception] with a user-facing message on failure.
   static Future<ProfileData> getProfile({required String token}) async {
     final http.Response response;
 
     try {
-      response = await http.get(
+      response = await http
+          .post(
         Uri.parse(_profileUrl),
         headers: {
           'Authorization': 'Bearer $token',
           'Accept': 'application/json',
+          'Content-Type': 'application/json',
         },
-      );
+        body: jsonEncode({}),
+      )
+          .timeout(const Duration(seconds: 15));
+    } on TimeoutException {
+      throw Exception('Server took too long to respond. Please try again.');
     } catch (_) {
       throw Exception('Could not connect. Please check your internet connection.');
     }
+
+    // ignore: avoid_print
+    print('PROFILE DEBUG -> status: ${response.statusCode}, body: ${response.body}');
 
     Map<String, dynamic> decoded;
     try {

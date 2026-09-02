@@ -226,7 +226,7 @@ class MessagesMainScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              // Star count pill
+              // Star / Fama points pill — ab session se dynamic value aati hai
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
                 decoration: BoxDecoration(
@@ -236,12 +236,12 @@ class MessagesMainScreen extends StatelessWidget {
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
-                  children: const [
-                    Icon(Icons.star_rounded, color: Color(0xFFFFC839), size: 14),
-                    SizedBox(width: 4),
+                  children: [
+                    const Icon(Icons.star_rounded, color: Color(0xFFFFC839), size: 14),
+                    const SizedBox(width: 4),
                     Text(
-                      '365',
-                      style: TextStyle(
+                      '${SessionManager.famaPoints}',
+                      style: const TextStyle(
                         fontFamily: 'Rob',
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
