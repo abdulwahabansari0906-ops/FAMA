@@ -37,6 +37,7 @@ dependencies:
   get: ^4.7.3
   url_launcher: ^6.3.2
   flutter_spinkit: ^5.2.2
+  share_plus: ^10.1.4
   get_storage:
   http: ^1.6.0
   image_picker: ^1.1.2

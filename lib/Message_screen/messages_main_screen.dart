@@ -1,92 +1,108 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../services and managers/conversation_apis_services.dart';
+import '../services and managers/profile_service.dart';
 import '../services and managers/whatsapp_invite_service.dart';
 import '../widgets/fama_bottom_nav.dart';
 import '../Feed_screen/post_now_popup.dart';
 import '../widgets/app_helper.dart';
 import '../services and managers/session_manager.dart';
-
 import 'message_individual_screen.dart';
 
-class ChatPreview {
-  final String name;
-  final String image;
-  final String stars;
-  final String lastMessage;
-
-  const ChatPreview({
-    required this.name,
-    required this.image,
-    required this.stars,
-    required this.lastMessage,
-  });
-}
-
-/// Messages list screen — sab conversations ek list mein.
-class MessagesMainScreen extends StatelessWidget {
+/// Messages list screen — sab conversations ek list mein (POST
+/// /api/conversations/list se live data).
+class MessagesMainScreen extends StatefulWidget {
   const MessagesMainScreen({super.key});
 
+  @override
+  State<MessagesMainScreen> createState() => _MessagesMainScreenState();
+}
+
+class _MessagesMainScreenState extends State<MessagesMainScreen> {
   static const Color _darkColor = Color(0xFF020A16);
   static const Color _borderColor = Color(0xFFE4E8ED);
   static const Color _whatsappColor = Color(0xFF298C4E);
 
-  static const List<ChatPreview> _chats = [
-    ChatPreview(
-      name: 'Savannah Nguyen',
-      image: 'assets/images/f1.png',
-      stars: '365',
-      lastMessage: 'Lorem ipsum dolor sit amet consectetur...',
-    ),
-    ChatPreview(
-      name: 'Devon Lane',
-      image: 'assets/images/f2.png',
-      stars: '365',
-      lastMessage: 'Lorem ipsum dolor sit amet consectetur...',
-    ),
-    ChatPreview(
-      name: 'Annette Black',
-      image: 'assets/images/f3.png',
-      stars: '365',
-      lastMessage: 'Lorem ipsum dolor sit amet consectetur...',
-    ),
-    ChatPreview(
-      name: 'Jenny Wilson',
-      image: 'assets/images/f4.png',
-      stars: '365',
-      lastMessage: 'Lorem ipsum dolor sit amet consectetur...',
-    ),
-    ChatPreview(
-      name: 'Darrell Steward',
-      image: 'assets/images/f5.png',
-      stars: '365',
-      lastMessage: 'Lorem ipsum dolor sit amet consectetur...',
-    ),
-    ChatPreview(
-      name: 'Janny Lorene',
-      image: 'assets/images/f6.png',
-      stars: '365',
-      lastMessage: 'Lorem ipsum dolor sit amet consectetur...',
-    ),
-    ChatPreview(
-      name: 'Annette Black',
-      image: 'assets/images/f7.png',
-      stars: '365',
-      lastMessage: 'Lorem ipsum dolor sit amet consectetur...',
-    ),
-    ChatPreview(
-      name: 'Jenny Wilson',
-      image: 'assets/images/f8.png',
-      stars: '365',
-      lastMessage: 'Lorem ipsum dolor sit amet consectetur...',
-    ),
-    ChatPreview(
-      name: 'Darlene Robertson',
-      image: 'assets/images/f9.png',
-      stars: '365',
-      lastMessage: 'Lorem ipsum dolor sit amet consectetur...',
-    ),
-  ];
+  List<ConversationSummary> _conversations = [];
+  bool _isLoading = true;
+  bool _loadFailed = false;
+  String _errorMessage = '';
+
+  // Session se live fama points.
+  int get _famaPoints => SessionManager.famaPoints;
+
+  @override
+  void initState() {
+    super.initState();
+    // AppHelpers.showLoader() (GetX dialog) pehle frame ke baad chalana
+    // zaroori hai warna "visitChildElements() called during build" crash
+    // aata hai.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _fetchConversations());
+    _syncFamaPoints();
+  }
+
+  // ── Fetching ─────────────────────────────────────────────────────────
+
+  Future<void> _fetchConversations() async {
+    setState(() {
+      _isLoading = true;
+      _loadFailed = false;
+    });
+
+    final String? token = SessionManager.accessToken;
+    if (token == null || token.trim().isEmpty) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _loadFailed = true;
+        _errorMessage = 'Session expired. Please log in again.';
+      });
+      AppHelpers.showError(_errorMessage);
+      return;
+    }
+
+    AppHelpers.showLoader();
+    try {
+      final List<ConversationSummary> conversations =
+      await ConversationApiService.getConversations(token: token);
+
+      AppHelpers.hideLoader();
+      if (!mounted) return;
+      setState(() {
+        _conversations = conversations;
+        _isLoading = false;
+        _loadFailed = false;
+      });
+    } catch (e) {
+      AppHelpers.hideLoader();
+      debugPrint('Conversations list error: $e');
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _loadFailed = true;
+        _errorMessage = e.toString().replaceFirst('Exception: ', '');
+      });
+      AppHelpers.showError(_errorMessage);
+    }
+  }
+
+  /// Session mein fama points ko fresh rakhne ke liye halka profile
+  /// fetch — sirf points sync karta hai, UI loader nahi dikhata.
+  Future<void> _syncFamaPoints() async {
+    final String? token = SessionManager.accessToken;
+    if (token == null || token.trim().isEmpty) return;
+
+    try {
+      final ProfileData profile = await ProfileApiService.getProfile(token: token);
+      await SessionManager.updateFamaPoints(profile.user.famaPoints);
+      if (!mounted) return;
+      setState(() {}); // pill ko rebuild karke naye points dikhao
+    } catch (e) {
+      debugPrint('Fama points sync error: $e');
+      // Silent fail — purana cached value hi dikhta rahega.
+    }
+  }
 
   Future<bool> _launchExternalUrl(Uri url) async {
     try {
@@ -147,6 +163,24 @@ class MessagesMainScreen extends StatelessWidget {
     }
   }
 
+  void _openConversation(ConversationSummary conversation) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => MessageIndividualScreen(
+          name: (conversation.otherUserName != null &&
+              conversation.otherUserName!.trim().isNotEmpty)
+              ? conversation.otherUserName!
+              : 'User',
+          image: conversation.otherUserAvatar ?? '',
+          recipientId: conversation.otherUserId,
+        ),
+      ),
+    );
+  }
+
+  // ── UI ────────────────────────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -155,15 +189,7 @@ class MessagesMainScreen extends StatelessWidget {
         child: Column(
           children: [
             _buildTopBar(),
-            Expanded(
-              child: ListView.separated(
-                padding: EdgeInsets.zero,
-                itemCount: _chats.length,
-                separatorBuilder: (context, index) =>
-                const Divider(height: 1, color: _borderColor),
-                itemBuilder: (context, index) => _chatTile(context, _chats[index]),
-              ),
-            ),
+            Expanded(child: _buildBody()),
           ],
         ),
       ),
@@ -171,6 +197,56 @@ class MessagesMainScreen extends StatelessWidget {
         currentIndex: 3,
         onTap: (index) => handleFamaNavTap(context, 3, index),
         onPostTap: () => showPostNowPopup(context),
+      ),
+    );
+  }
+
+  Widget _buildBody() {
+    if (_isLoading && _conversations.isEmpty) {
+      // Sirf AppHelpers ka apna loader dikhta hai, koi default spinner nahi.
+      return const SizedBox.shrink();
+    }
+
+    if (_loadFailed && _conversations.isEmpty) {
+      return Center(
+        child: TextButton(
+          onPressed: _fetchConversations,
+          child: Text(
+            '$_errorMessage\nTap to retry.',
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: Color(0xFF60656B)),
+          ),
+        ),
+      );
+    }
+
+    if (_conversations.isEmpty) {
+      return RefreshIndicator(
+        onRefresh: _fetchConversations,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: const [
+            SizedBox(height: 120),
+            Center(
+              child: Text(
+                'No conversations yet.',
+                style: TextStyle(fontFamily: 'Rob', color: Color(0xFF60656B)),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: _fetchConversations,
+      child: ListView.separated(
+        padding: EdgeInsets.zero,
+        physics: const AlwaysScrollableScrollPhysics(),
+        itemCount: _conversations.length,
+        separatorBuilder: (context, index) =>
+        const Divider(height: 1, color: _borderColor),
+        itemBuilder: (context, index) => _chatTile(_conversations[index]),
       ),
     );
   }
@@ -195,38 +271,35 @@ class MessagesMainScreen extends StatelessWidget {
               ),
               const Spacer(),
               // Invite button
-              GestureDetector(
-                onTap: _handleTopBarInvite,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                  decoration: BoxDecoration(
-                    color: _whatsappColor,
-                    borderRadius: BorderRadius.circular(5),
-                  ),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Image(
-                        image: AssetImage('assets/images/whatsapp.png'),
-                        width: 14,
-                        height: 14,
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                decoration: BoxDecoration(
+                  color: _whatsappColor,
+                  borderRadius: BorderRadius.circular(5),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Image.asset(
+                      'assets/images/whatsapp.png',
+                      width: 14,
+                      height: 14,
+                    ),
+                    const SizedBox(width: 5),
+                    const Text(
+                      'Invite',
+                      style: TextStyle(
+                        fontFamily: 'Rob',
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
                       ),
-                      SizedBox(width: 5),
-                      Text(
-                        'Invite',
-                        style: TextStyle(
-                          fontFamily: 'Rob',
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(width: 8),
-              // Star / Fama points pill — ab session se dynamic value aati hai
+              // Star count pill — ab live fama points dikhata hai
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
                 decoration: BoxDecoration(
@@ -240,7 +313,7 @@ class MessagesMainScreen extends StatelessWidget {
                     const Icon(Icons.star_rounded, color: Color(0xFFFFC839), size: 14),
                     const SizedBox(width: 4),
                     Text(
-                      '${SessionManager.famaPoints}',
+                      '$_famaPoints',
                       style: const TextStyle(
                         fontFamily: 'Rob',
                         fontSize: 12,
@@ -263,19 +336,22 @@ class MessagesMainScreen extends StatelessWidget {
     );
   }
 
-  Widget _chatTile(BuildContext context, ChatPreview chat) {
+
+  Widget _chatTile(ConversationSummary conversation) {
+    final bool hasAvatar = conversation.otherUserAvatar != null &&
+        conversation.otherUserAvatar!.isNotEmpty;
+    final String displayName =
+    (conversation.otherUserName != null &&
+        conversation.otherUserName!.trim().isNotEmpty)
+        ? conversation.otherUserName!
+        : 'User';
+    final String preview = (conversation.lastMessage != null &&
+        conversation.lastMessage!.trim().isNotEmpty)
+        ? conversation.lastMessage!
+        : 'Say hi 👋';
+
     return InkWell(
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => MessageIndividualScreen(
-              name: chat.name,
-              image: chat.image,
-            ),
-          ),
-        );
-      },
+      onTap: () => _openConversation(conversation),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Row(
@@ -283,7 +359,11 @@ class MessagesMainScreen extends StatelessWidget {
             CircleAvatar(
               radius: 26,
               backgroundColor: const Color(0xFFE4E8ED),
-              backgroundImage: AssetImage(chat.image),
+              backgroundImage:
+              hasAvatar ? NetworkImage(conversation.otherUserAvatar!) : null,
+              child: !hasAvatar
+                  ? const Icon(Icons.person, color: _darkColor, size: 26)
+                  : null,
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -294,7 +374,7 @@ class MessagesMainScreen extends StatelessWidget {
                     children: [
                       Flexible(
                         child: Text(
-                          chat.name,
+                          displayName,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
                             fontFamily: 'Rob',
@@ -304,13 +384,22 @@ class MessagesMainScreen extends StatelessWidget {
                           ),
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      _starPill(chat.stars),
+                      if (conversation.timeAgo.isNotEmpty) ...[
+                        const SizedBox(width: 8),
+                        Text(
+                          conversation.timeAgo,
+                          style: const TextStyle(
+                            fontFamily: 'Rob',
+                            fontSize: 11,
+                            color: Color(0xFF9AA0A6),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    chat.lastMessage,
+                    preview,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
@@ -324,33 +413,6 @@ class MessagesMainScreen extends StatelessWidget {
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _starPill(String value) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF5F5F5),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: _borderColor),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.star_rounded, color: Color(0xFFFFC839), size: 12),
-          const SizedBox(width: 3),
-          Text(
-            value,
-            style: const TextStyle(
-              fontFamily: 'Rob',
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: _darkColor,
-            ),
-          ),
-        ],
       ),
     );
   }

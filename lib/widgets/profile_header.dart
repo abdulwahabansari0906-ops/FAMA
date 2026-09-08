@@ -32,7 +32,10 @@ class ProfileHeader extends StatelessWidget {
             backgroundColor: const Color(0xFFE4E8ED),
             backgroundImage: (user.avatarUrl != null && user.avatarUrl!.isNotEmpty)
                 ? NetworkImage(user.avatarUrl!)
-                : const AssetImage('assets/images/f1.png') as ImageProvider,
+                : null,
+            child: (user.avatarUrl == null || user.avatarUrl!.isEmpty)
+                ? const Icon(Icons.person, size: 34, color: Color(0xFF020A16))
+                : null,
           ),
           const SizedBox(width: 14),
           Expanded(

@@ -3,6 +3,9 @@ import 'package:fama/Feed_screen/feed_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../services and managers/whatsapp_invite_service.dart';
+import '../services and managers/session_manager.dart';
+import '../widgets/app_helper.dart';
 import '../widgets/fame_stepps_app_bar.dart';
 
 class InviteFriendsScreen extends StatelessWidget {
@@ -23,6 +26,55 @@ https://your-invite-link.com
     Get.offAll(() => const FeedScreen());
   }
 
+  Future<bool> _launchExternalUrl(Uri url) async {
+    try {
+      return await launchUrl(url, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// "Invite Friends On WhatsApp" button ka handler — session se phone
+  /// number nikaal kar invite API call karta hai aur backend se aaya hua
+  /// whatsapp_url open karta hai (WhatsApp ki apni contact list khulti
+  /// hai, taake user khud choose kare kise bheja jaye).
+  Future<void> _handleInvite() async {
+    if (Get.isDialogOpen == true) return; // request already in progress
+
+    final String? phoneNumber = SessionManager.phoneNumber;
+    final String? token = SessionManager.accessToken;
+
+    if (phoneNumber == null || phoneNumber.trim().isEmpty) {
+      AppHelpers.showError('Phone number not found. Please log in again.');
+      return;
+    }
+
+    if (token == null || token.trim().isEmpty) {
+      AppHelpers.showError('Session expired. Please log in again.');
+      return;
+    }
+
+    AppHelpers.showLoader();
+
+    try {
+      final InviteResponse invite = await InviteApiService.getInviteLink(
+        phoneNumber: phoneNumber,
+        token: token,
+      );
+
+      final bool opened = await _launchExternalUrl(invite.contactPickerUri);
+
+      AppHelpers.hideLoader();
+
+      if (!opened) {
+        AppHelpers.showError('Could not open WhatsApp.');
+      }
+    } catch (e) {
+      AppHelpers.hideLoader();
+      debugPrint('Invite error: $e');
+      AppHelpers.showError(e.toString().replaceFirst('Exception: ', ''));
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -115,9 +167,7 @@ https://your-invite-link.com
                           width: double.infinity,
                           height: 44,
                           child: ElevatedButton(
-                            onPressed: () {
-                              Get.to(()=>WhatsAppInviteScreen());
-                            },
+                            onPressed: _handleInvite,
                             style: ElevatedButton.styleFrom(
                               elevation: 0,
                               backgroundColor: _whatsappColor,

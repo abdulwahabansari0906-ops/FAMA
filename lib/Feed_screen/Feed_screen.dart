@@ -1,11 +1,14 @@
 import 'package:fama/Feed_screen/public_profile_screen.dart';
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:video_player/video_player.dart';
 import '../services and managers/feed_service.dart';
 import '../services and managers/fama_like_api_service.dart';
+import '../services and managers/post_share_service.dart';
 import '../services and managers/post_views_api_service.dart';
 import '../services and managers/session_manager.dart';
 import '../widgets/app_helper.dart';
+import '../widgets/comment_bottom_sheet.dart';
 import '../widgets/fama_bottom_nav.dart';
 import 'post_now_popup.dart';
 
@@ -57,6 +60,25 @@ class _FeedScreenState extends State<FeedScreen> {
   // dete, is liye tap hote hi yahan locally +1/-1 kar dete hain taake
   // count turant (optimistically) update dikhe.
   final Map<int, int> _famaPointsOverride = {};
+
+  // Post ids jinke liye Share request abhi in-flight hai — taake ek hi
+  // post ko baar baar spam tap na kiya ja sake.
+  final Set<int> _sharePendingPostIds = {};
+
+  // Har post ka displayed shares count — share API updated count wapas
+  // deti hai, isko yahan override kar dete hain taake list dobara fetch
+  // kiye bina bhi turant sahi count dikhe.
+  final Map<int, int> _sharesCountOverride = {};
+
+  // Har post ka displayed comments count — comment add/delete hote hi
+  // yahan +1/-1 kar dete hain taake bottom sheet band kiye bina bhi feed
+  // par count turant update dikhe (bina refresh kiye).
+  final Map<int, int> _commentsCountOverride = {};
+
+  // Jab public profile screen (ya koi aur screen) par navigate karte hain
+  // to true — is se current video ka isActive false ho jata hai aur wo
+  // pause ho jata hai. Wapas aane par false, taake video auto-resume ho.
+  bool _feedPaused = false;
 
   @override
   void initState() {
@@ -274,15 +296,81 @@ class _FeedScreenState extends State<FeedScreen> {
     }
   }
 
+  /// The shares count currently shown for [post] — server-confirmed
+  /// override once a share has been recorded this session, otherwise the
+  /// count from the feed API.
+  int _currentSharesCount(FeedPost post) {
+    return _sharesCountOverride[post.id] ?? post.sharesCount;
+  }
+
+  /// Records a share for [post] and updates its displayed count from the
+  /// server's response. Native share sheet pehle khulta hai (WhatsApp,
+  /// copy link, etc. — user apna platform khud choose karta hai), phir
+  /// backend par share count register hoti hai.
+  Future<void> _handleShare(FeedPost post) async {
+    if (_sharePendingPostIds.contains(post.id)) return; // already in-flight
+
+    final String? token = SessionManager.accessToken;
+    if (token == null || token.trim().isEmpty) {
+      AppHelpers.showError('Session expired. Please log in again.');
+      return;
+    }
+
+    // Native share sheet — video ka direct URL share hota hai.
+    try {
+      await Share.share(
+        'Check out this video on FAMA!\n${post.videoUrl}',
+        subject: 'FAMA video from ${post.userName}',
+      );
+    } catch (e) {
+      debugPrint('Native share sheet failed: $e');
+    }
+
+    setState(() => _sharePendingPostIds.add(post.id));
+
+    try {
+      final PostShareResult result = await PostShareApiService.sharePost(
+        token: token,
+        postId: post.id,
+      );
+
+      if (!mounted) return;
+      setState(() => _sharesCountOverride[post.id] = result.sharesCount);
+    } catch (e) {
+      // Share sheet already opened successfully from the user's point of
+      // view — count failing is background analytics, so log it quietly
+      // rather than showing an error that would confuse them.
+      debugPrint('Share count failed for post ${post.id}: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _sharePendingPostIds.remove(post.id));
+      }
+    }
+  }
+
+  /// The comments count currently shown for [post] — local override once
+  /// the user has added/deleted a comment this session, otherwise the
+  /// count from the feed API.
+  int _currentCommentsCount(FeedPost post) {
+    return _commentsCountOverride[post.id] ?? post.commentsCount;
+  }
+
   /// Avatar/name par tap karne se us user ka public profile screen khulta
   /// hai (token session se aata hai, target_id post ka user_id hota hai).
-  void _openPosterProfile(FeedPost post) {
-    Navigator.push(
+  /// Screen khulne se pehle current video pause ho jata hai (`_feedPaused`
+  /// true), aur wapas aane par khud-ba-khud resume ho jata hai (false).
+  Future<void> _openPosterProfile(FeedPost post) async {
+    setState(() => _feedPaused = true);
+
+    await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => PublicProfileScreen(targetId: post.userId),
       ),
     );
+
+    if (!mounted) return;
+    setState(() => _feedPaused = false);
   }
 
   // ── UI ────────────────────────────────────────────────────────────────
@@ -351,22 +439,28 @@ class _FeedScreenState extends State<FeedScreen> {
   }
 
   Widget _buildPostPage(FeedPost post, bool isActive) {
+    // _feedPaused true hone par (jaise public profile screen open hone se
+    // pehle) yahan bhi false ho jata hai, taake video pause ho jaye.
+    final bool videoActive = isActive && !_feedPaused;
+
     return Stack(
       fit: StackFit.expand,
       children: [
-        _FeedVideoItem(post: post, isActive: isActive),
+        _FeedVideoItem(post: post, isActive: videoActive),
 
         // Bottom fade for text readability
-        Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                Colors.transparent,
-                Colors.black.withOpacity(0.75),
-              ],
-              stops: const [0.55, 1],
+        IgnorePointer(
+          child: Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.transparent,
+                  Colors.black.withOpacity(0.75),
+                ],
+                stops: const [0.55, 1],
+              ),
             ),
           ),
         ),
@@ -384,13 +478,32 @@ class _FeedScreenState extends State<FeedScreen> {
           bottom: 128,
           child: Column(
             children: [
-              _actionButton(icon: Icons.reply, count: '${post.sharesCount}'),
+              GestureDetector(
+                onTap: () => _handleShare(post),
+                child: _actionButton(
+                  icon: Icons.reply,
+                  count: '${_currentSharesCount(post)}',
+                ),
+              ),
               const SizedBox(height: 18),
               _famaActionButton(post),
               const SizedBox(height: 18),
-              _actionButton(
-                icon: Icons.chat_bubble_outline_rounded,
-                count: '${post.commentsCount}',
+              GestureDetector(
+                onTap: () => showCommentsBottomSheet(
+                  context,
+                  postId: post.id,
+                  onCommentCountChanged: (delta) {
+                    if (!mounted) return;
+                    setState(() {
+                      _commentsCountOverride[post.id] =
+                          _currentCommentsCount(post) + delta;
+                    });
+                  },
+                ),
+                child: _actionButton(
+                  icon: Icons.chat_bubble_outline_rounded,
+                  count: '${_currentCommentsCount(post)}',
+                ),
               ),
             ],
           ),
@@ -423,7 +536,8 @@ class _FeedScreenState extends State<FeedScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.white.withOpacity(0.35) : Colors.transparent,
+          color:
+          isSelected ? Colors.white.withOpacity(0.35) : Colors.transparent,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: Colors.white70, width: 1),
         ),
@@ -512,18 +626,22 @@ class _FeedScreenState extends State<FeedScreen> {
           // Views + time ago
           Row(
             children: [
-              const Icon(Icons.remove_red_eye_outlined, color: Colors.white70, size: 15),
+              const Icon(Icons.remove_red_eye_outlined,
+                  color: Colors.white70, size: 15),
               const SizedBox(width: 4),
               Text(
                 '${post.viewsCount} Views',
-                style: const TextStyle(fontFamily: 'Rob', fontSize: 12, color: Colors.white70),
+                style: const TextStyle(
+                    fontFamily: 'Rob', fontSize: 12, color: Colors.white70),
               ),
               const SizedBox(width: 14),
-              const Icon(Icons.access_time_rounded, color: Colors.white70, size: 15),
+              const Icon(Icons.access_time_rounded,
+                  color: Colors.white70, size: 15),
               const SizedBox(width: 4),
               Text(
                 post.timeAgo,
-                style: const TextStyle(fontFamily: 'Rob', fontSize: 12, color: Colors.white70),
+                style: const TextStyle(
+                    fontFamily: 'Rob', fontSize: 12, color: Colors.white70),
               ),
             ],
           ),
@@ -644,7 +762,10 @@ class _FeedScreenState extends State<FeedScreen> {
 
 /// Single feed page's video — initializes its own network controller and
 /// plays/pauses automatically as [isActive] changes (i.e. as the user
-/// swipes between pages).
+/// swipes between pages, or as the parent pauses it for navigation).
+/// Tapping toggles play/pause manually:
+/// - Paused: translucent white play icon stays visible until tapped again.
+/// - Resumed: play icon disappears immediately.
 class _FeedVideoItem extends StatefulWidget {
   const _FeedVideoItem({required this.post, required this.isActive});
 
@@ -658,14 +779,28 @@ class _FeedVideoItem extends StatefulWidget {
 class _FeedVideoItemState extends State<_FeedVideoItem> {
   VideoPlayerController? _controller;
 
+  // Controller ke value se derive nahi karte (wo position update par bhi
+  // notify karta hai) — apna khud ka flag rakhte hain taake overlay sirf
+  // actual pause/play par hi rebuild ho.
+  bool _isPaused = false;
+
+  // Video init fail ho jaye (bad URL / network / codec) to yahan true —
+  // is se placeholder par retry icon dikhta hai. Isi ke bina page
+  // hamesha ke liye dead (grey, non-interactive) reh jata tha.
+  bool _hasInitError = false;
+
   @override
   void initState() {
     super.initState();
+    _isPaused = !widget.isActive;
     _initController();
   }
 
   Future<void> _initController() async {
-    if (widget.post.videoUrl.isEmpty) return;
+    if (widget.post.videoUrl.isEmpty) {
+      if (mounted) setState(() => _hasInitError = true);
+      return;
+    }
 
     final VideoPlayerController controller =
     VideoPlayerController.networkUrl(Uri.parse(widget.post.videoUrl));
@@ -674,8 +809,10 @@ class _FeedVideoItemState extends State<_FeedVideoItem> {
       await controller.initialize();
       controller.setLooping(true);
     } catch (e) {
-      debugPrint('FEED DEBUG -> video init failed for ${widget.post.videoUrl}: $e');
+      debugPrint(
+          'FEED DEBUG -> video init failed for ${widget.post.videoUrl}: $e');
       controller.dispose();
+      if (mounted) setState(() => _hasInitError = true);
       return;
     }
 
@@ -684,8 +821,22 @@ class _FeedVideoItemState extends State<_FeedVideoItem> {
       return;
     }
 
-    setState(() => _controller = controller);
-    if (widget.isActive) controller.play();
+    setState(() {
+      _controller = controller;
+      _hasInitError = false;
+      if (widget.isActive) {
+        controller.play();
+        _isPaused = false;
+      } else {
+        _isPaused = true;
+      }
+    });
+  }
+
+  /// Called when the user taps the retry icon on a failed-to-load video.
+  void _retryInit() {
+    setState(() => _hasInitError = false);
+    _initController();
   }
 
   @override
@@ -694,10 +845,40 @@ class _FeedVideoItemState extends State<_FeedVideoItem> {
     final VideoPlayerController? controller = _controller;
     if (controller == null || !controller.value.isInitialized) return;
 
+    // Sirf tab react karo jab `isActive` ki value *actually* badli ho —
+    // har parent rebuild par nahi (fama tap, share tap, comment count,
+    // filter chip — in sab se FeedScreen rebuild hota hai aur
+    // didUpdateWidget yahan bhi fire ho jata). Pehle is guard ke bina,
+    // agar user ne video ko manually pause kar rakha tha aur post abhi
+    // bhi active thi, to har aisi rebuild par video khud-ba-khud resume
+    // ho jati thi — is liye pause "kaam nahi kar raha tha" lagta tha.
+    if (oldWidget.isActive == widget.isActive) return;
+
+    // Page swipe/navigation par active video ko play aur inactive video
+    // ko pause karo.
     if (widget.isActive && !controller.value.isPlaying) {
       controller.play();
+      setState(() => _isPaused = false);
     } else if (!widget.isActive && controller.value.isPlaying) {
       controller.pause();
+      setState(() => _isPaused = true);
+    }
+  }
+
+  void _togglePlayPause() {
+    final VideoPlayerController? controller = _controller;
+    debugPrint(
+        'TAP DEBUG -> controller null? ${controller == null}, initialized? ${controller?.value.isInitialized}');
+    if (controller == null || !controller.value.isInitialized) return;
+
+    if (!_isPaused) {
+      // Pause: icon persistently dikhta rehta hai jab tak dobara tap na ho.
+      setState(() => _isPaused = true);
+      controller.pause();
+    } else {
+      // Resume: play call hote hi icon isi frame mein hide ho jata hai.
+      setState(() => _isPaused = false);
+      controller.play();
     }
   }
 
@@ -710,21 +891,68 @@ class _FeedVideoItemState extends State<_FeedVideoItem> {
   @override
   Widget build(BuildContext context) {
     final VideoPlayerController? controller = _controller;
+
+    // Loading / failed state — ab ye bhi tap-aware hai. Bina init hue
+    // pehle is Container mein koi GestureDetector nahi tha, is liye tap
+    // bilkul kaam nahi karta tha jab tak video load na ho jaye (ya
+    // hamesha ke liye dead reh jata tha agar load hi fail ho jaye).
     if (controller == null || !controller.value.isInitialized) {
-      return Container(color: const Color(0xFF20242B));
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: _hasInitError ? _retryInit : null,
+        child: Container(
+          color: const Color(0xFF20242B),
+          child: Center(
+            child: _hasInitError
+                ? const Icon(Icons.refresh_rounded,
+                color: Colors.white54, size: 32)
+                : const CircularProgressIndicator(color: Colors.white38),
+          ),
+        ),
+      );
     }
 
     return GestureDetector(
-      onTap: () {
-        controller.value.isPlaying ? controller.pause() : controller.play();
-      },
-      child: FittedBox(
-        fit: BoxFit.cover,
-        child: SizedBox(
-          width: controller.value.size.width,
-          height: controller.value.size.height,
-          child: VideoPlayer(controller),
-        ),
+      // opaque: FittedBox/IgnorePointer overlay ki wajah se child render
+      // object kabhi kabhi hit-test miss kar deta tha (default
+      // `deferToChild` behavior), is liye tap kabhi register hi nahi
+      // hota tha. opaque poori Stack area ko hit-testable bana deta hai.
+      behavior: HitTestBehavior.opaque,
+      onTap: _togglePlayPause,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          FittedBox(
+            fit: BoxFit.cover,
+            child: SizedBox(
+              width: controller.value.size.width,
+              height: controller.value.size.height,
+              child: VideoPlayer(controller),
+            ),
+          ),
+
+          // Pause hone par screen ke bilkul beech mein translucent white
+          // circle + play icon dikhta hai (jaisa Instagram/TikTok karte
+          // hain); resume hote hi icon foran disappear ho jata hai.
+          if (_isPaused)
+            IgnorePointer(
+              child: Center(
+                child: Container(
+                  width: 72,
+                  height: 72,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.3),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.play_arrow_rounded,
+                    color: Colors.white,
+                    size: 40,
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }

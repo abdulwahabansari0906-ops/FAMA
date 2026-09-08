@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../Message_screen/message_individual_screen.dart';
 import '../Profile_screen/full_screen_video_play_screen.dart';
 import '../services and managers/profile_service.dart';
 import '../services and managers/public_profile_view_service.dart';
@@ -115,6 +117,36 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     }
   }
 
+  /// Opens a 1:1 chat with this profile's user.
+  void _openMessageScreen(ProfileUser user) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => MessageIndividualScreen(
+          name: user.name.isNotEmpty ? user.name : 'User',
+          image: user.avatarUrl ?? '',
+          recipientId: widget.targetId,
+        ),
+      ),
+    );
+  }
+
+  /// Opens the native share sheet with a link to this profile.
+  ///
+  /// NOTE: the link format below is a placeholder — replace it with your
+  /// actual public profile URL scheme once you have one.
+  Future<void> _shareProfile(ProfileUser user) async {
+    final String displayName = user.name.isNotEmpty ? user.name : 'this profile';
+    final String link = 'https://fama.digitalpreps.com/profile/${widget.targetId}';
+
+    try {
+      await Share.share('Check out $displayName on FAMA!\n$link');
+    } catch (e) {
+      debugPrint('Share profile error: $e');
+      AppHelpers.showError('Could not open the share sheet.');
+    }
+  }
+
   // ── UI ────────────────────────────────────────────────────────────────
 
   @override
@@ -175,6 +207,8 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
             _buildBio(profile),
             const SizedBox(height: 16),
             _buildSocialLinks(profile),
+            const SizedBox(height: 16),
+            _buildActionButtons(profile),
             const SizedBox(height: 20),
             const Divider(color: _borderColor, height: 1),
             _buildPostGrid(profile),
@@ -357,6 +391,77 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
               onTap: () => _openSocialHandle(
                 user.facebookHandle,
                 'https://facebook.com/',
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Message + Share row — same style as the logged-in user's own profile.
+  Widget _buildActionButtons(ProfileData profile) {
+    final ProfileUser user = profile.user;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Row(
+        children: [
+          Expanded(
+            child: SizedBox(
+              height: 44,
+              child: ElevatedButton(
+                onPressed: () => _openMessageScreen(user),
+                style: ElevatedButton.styleFrom(
+                  elevation: 0,
+                  backgroundColor: _darkColor,
+                  foregroundColor: Colors.white,
+                  shape: const StadiumBorder(),
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.mail_outline_rounded, size: 16),
+                    SizedBox(width: 8),
+                    Text(
+                      'Message',
+                      style: TextStyle(
+                        fontFamily: 'Rob',
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: SizedBox(
+              height: 44,
+              child: OutlinedButton(
+                onPressed: () => _shareProfile(user),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: _darkColor,
+                  side: const BorderSide(color: _borderColor),
+                  shape: const StadiumBorder(),
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.reply, size: 16),
+                    SizedBox(width: 8),
+                    Text(
+                      'Share',
+                      style: TextStyle(
+                        fontFamily: 'Rob',
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),

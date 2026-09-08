@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../Feed_screen/public_profile_screen.dart';
 import '../services and managers/leader_board_services.dart';
 import '../services and managers/location_list_service.dart';
 import '../services and managers/school_list_service.dart';
@@ -17,6 +18,7 @@ class _LeaderboardDisplayItem {
   final String name;
   final String? avatarUrl;
   final int points;
+  final int userId;
   final bool isVideo;
 
   const _LeaderboardDisplayItem({
@@ -24,6 +26,7 @@ class _LeaderboardDisplayItem {
     required this.name,
     required this.avatarUrl,
     required this.points,
+    required this.userId,
     this.isVideo = false,
   });
 }
@@ -189,6 +192,17 @@ class _RankingScreenState extends State<RankingScreen> {
       setState(() => _selectedGender = result);
       _fetchLeaderboard();
     }
+  }
+
+  /// Opens the public (read-only) profile screen for [userId].
+  void _openUserProfile(int userId) {
+    if (userId <= 0) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PublicProfileScreen(targetId: userId),
+      ),
+    );
   }
 
   // ── UI ───────────────────────────────────────────────────────────────
@@ -502,6 +516,7 @@ class _RankingScreenState extends State<RankingScreen> {
               : 'Unnamed',
           avatarUrl: entry.avatarUrl,
           points: entry.points,
+          userId: entry.id,
         ));
       }
       return items;
@@ -516,6 +531,7 @@ class _RankingScreenState extends State<RankingScreen> {
               : 'Unnamed',
           avatarUrl: entry.thumbnailUrl,
           points: entry.points,
+          userId: entry.userId,
           isVideo: true,
         ));
       }
@@ -586,79 +602,83 @@ class _RankingScreenState extends State<RankingScreen> {
   Widget _itemCard(_LeaderboardDisplayItem item) {
     final bool hasImage = item.avatarUrl != null && item.avatarUrl!.isNotEmpty;
 
-    return Column(
-      children: [
-        Stack(
-          clipBehavior: Clip.none,
-          children: [
-            CircleAvatar(
-              radius: 32,
-              backgroundColor: const Color(0xFFE4E8ED),
-              backgroundImage: hasImage ? NetworkImage(item.avatarUrl!) : null,
-              child: !hasImage
-                  ? Icon(
-                item.isVideo
-                    ? Icons.play_circle_fill_rounded
-                    : Icons.person_rounded,
-                color: Colors.grey,
-                size: 28,
-              )
-                  : null,
-            ),
-            Positioned(
-              top: -4,
-              left: -4,
-              child: Container(
-                height: 20,
-                width: 20,
-                decoration: const BoxDecoration(
-                  color: _rankBadgeColor,
-                  shape: BoxShape.circle,
-                ),
-                child: Center(
-                  child: Text(
-                    '${item.rank}',
-                    style: const TextStyle(
-                      fontFamily: 'Rob',
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.white,
+    return GestureDetector(
+      onTap: () => _openUserProfile(item.userId),
+      behavior: HitTestBehavior.opaque,
+      child: Column(
+        children: [
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              CircleAvatar(
+                radius: 32,
+                backgroundColor: const Color(0xFFE4E8ED),
+                backgroundImage: hasImage ? NetworkImage(item.avatarUrl!) : null,
+                child: !hasImage
+                    ? Icon(
+                  item.isVideo
+                      ? Icons.play_circle_fill_rounded
+                      : Icons.person_rounded,
+                  color: Colors.grey,
+                  size: 28,
+                )
+                    : null,
+              ),
+              Positioned(
+                top: -4,
+                left: -4,
+                child: Container(
+                  height: 20,
+                  width: 20,
+                  decoration: const BoxDecoration(
+                    color: _rankBadgeColor,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Center(
+                    child: Text(
+                      '${item.rank}',
+                      style: const TextStyle(
+                        fontFamily: 'Rob',
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                      ),
                     ),
                   ),
                 ),
               ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 6),
-        Text(
-          item.name,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
-            fontFamily: 'Rob',
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: _darkColor,
+            ],
           ),
-        ),
-        const SizedBox(height: 4),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.star_rounded, color: Color(0xFFFFC839), size: 13),
-            const SizedBox(width: 2),
-            Text(
-              '${item.points}',
-              style: const TextStyle(
-                fontFamily: 'Rob',
-                fontSize: 11,
-                fontWeight: FontWeight.w500,
-                color: Colors.grey,
-              ),
+          const SizedBox(height: 6),
+          Text(
+            item.name,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontFamily: 'Rob',
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: _darkColor,
             ),
-          ],
-        ),
-      ],
+          ),
+          const SizedBox(height: 4),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.star_rounded, color: Color(0xFFFFC839), size: 13),
+              const SizedBox(width: 2),
+              Text(
+                '${item.points}',
+                style: const TextStyle(
+                  fontFamily: 'Rob',
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.grey,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }
