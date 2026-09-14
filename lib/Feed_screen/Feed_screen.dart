@@ -9,6 +9,7 @@ import '../services and managers/post_views_api_service.dart';
 import '../services and managers/session_manager.dart';
 import '../widgets/app_helper.dart';
 import '../widgets/comment_bottom_sheet.dart';
+import '../widgets/report_bottom_sheet.dart';
 import '../widgets/fama_bottom_nav.dart';
 import 'post_now_popup.dart';
 
@@ -101,7 +102,6 @@ class _FeedScreenState extends State<FeedScreen> {
     });
 
     final String? token = SessionManager.accessToken;
-    debugPrint('FEED DEBUG -> token: $token');
 
     if (token == null || token.trim().isEmpty) {
       if (!mounted) return;
@@ -373,6 +373,39 @@ class _FeedScreenState extends State<FeedScreen> {
     setState(() => _feedPaused = false);
   }
 
+  /// Reports the creator using the user ID, as shown in the API example.
+  Future<void> _openReport(FeedPost post) async {
+    if (_feedPaused) return;
+
+    if (post.id <= 0) {
+      AppHelpers.showError('Invalid post.');
+      return;
+    }
+
+    setState(() => _feedPaused = true);
+
+    try {
+      final message = await showReportBottomSheet(
+        context,
+        reportedType: 'post',
+        reportedId: post.id,
+        targetName: 'Post by ${post.userName}',
+      );
+
+      if (!mounted || message == null) return;
+
+      AppHelpers.showSuccess(
+        message.trim().isNotEmpty
+            ? message
+            : 'Report submitted successfully.',
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _feedPaused = false);
+      }
+    }
+  }
+
   // ── UI ────────────────────────────────────────────────────────────────
 
   @override
@@ -483,6 +516,25 @@ class _FeedScreenState extends State<FeedScreen> {
                 child: _actionButton(
                   icon: Icons.reply,
                   count: '${_currentSharesCount(post)}',
+                ),
+              ),
+              const SizedBox(height: 18),
+              Tooltip(
+                message: 'Report post',
+                child: Semantics(
+                  button: true,
+                  label: 'Report post by ${post.userName}',
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(24),
+                    onTap: () => _openReport(post),
+                    child: Padding(
+                      padding: const EdgeInsets.all(2),
+                      child: _actionButton(
+                        icon: Icons.error_outline_rounded,
+                        count: 'Report',
+                      ),
+                    ),
+                  ),
                 ),
               ),
               const SizedBox(height: 18),

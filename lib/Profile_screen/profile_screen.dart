@@ -1,4 +1,5 @@
 import 'package:fama/Message_screen/messages_main_screen.dart';
+import 'package:fama/Profile_screen/report_video_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -259,6 +260,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
     });
   }
 
+  void _openYourReports() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const ReportedVideosScreen(),
+      ),
+    );
+  }
+
   // ── UI ────────────────────────────────────────────────────────────────
 
   @override
@@ -360,12 +370,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
             const SizedBox(height: 16),
             ProfileActionButtons(
               onMessageTap: () {
-              Get.to(MessagesMainScreen());
+                Get.to(MessagesMainScreen());
               },
               onShareTap: () {
                 // TODO: share sheet kholein
-              },
+              },  onReportTap: _openYourReports,
             ),
+
             const SizedBox(height: 16),
             ProfileTabs(
               selectedTab: _selectedTab,

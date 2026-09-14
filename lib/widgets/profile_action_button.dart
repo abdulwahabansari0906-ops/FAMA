@@ -6,11 +6,13 @@ const Color _borderColor = Color(0xFFE4E8ED);
 class ProfileActionButtons extends StatelessWidget {
   final VoidCallback onMessageTap;
   final VoidCallback onShareTap;
+  final VoidCallback onReportTap;
 
   const ProfileActionButtons({
     super.key,
     required this.onMessageTap,
     required this.onShareTap,
+    required this.onReportTap,
   });
 
   @override
@@ -28,23 +30,17 @@ class ProfileActionButtons extends StatelessWidget {
                   elevation: 0,
                   backgroundColor: _darkColor,
                   foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
                   shape: const StadiumBorder(),
                 ),
-                child: const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.mail_outline_rounded, size: 16),
-                    SizedBox(width: 8),
-                    Text(
-                      'Message',
-                      style: TextStyle(fontFamily: 'Rob', fontSize: 13, fontWeight: FontWeight.w600),
-                    ),
-                  ],
+                child: _buttonContent(
+                  icon: Icons.mail_outline_rounded,
+                  label: 'Message',
                 ),
               ),
             ),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 8),
           Expanded(
             child: SizedBox(
               height: 44,
@@ -52,21 +48,59 @@ class ProfileActionButtons extends StatelessWidget {
                 onPressed: onShareTap,
                 style: OutlinedButton.styleFrom(
                   foregroundColor: _darkColor,
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
                   side: const BorderSide(color: _borderColor),
                   shape: const StadiumBorder(),
                 ),
-                child: const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.reply, size: 16),
-                    SizedBox(width: 8),
-                    Text(
-                      'Share',
-                      style: TextStyle(fontFamily: 'Rob', fontSize: 13, fontWeight: FontWeight.w600),
-                    ),
-                  ],
+                child: _buttonContent(
+                  icon: Icons.reply,
+                  label: 'Share',
                 ),
               ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: SizedBox(
+              height: 44,
+              child: ElevatedButton(
+                onPressed: onReportTap,
+                style: ElevatedButton.styleFrom(
+                  elevation: 0,
+                  backgroundColor: Colors.black,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  shape: const StadiumBorder(),
+                ),
+                child: _buttonContent(
+                  icon: Icons.flag_outlined,
+                  label: 'Your Reports',
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buttonContent({
+    required IconData icon,
+    required String label,
+  }) {
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: const TextStyle(
+              fontFamily: 'Rob',
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
             ),
           ),
         ],

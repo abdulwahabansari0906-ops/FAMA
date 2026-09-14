@@ -6,7 +6,7 @@ class Loader extends StatelessWidget {
   final double size;
   final double strokeWidth;
 
-  const Loader({super.key, this.color = Colors.yellow, this.size = 50.0,
+  const Loader({super.key, this.color = Colors.black, this.size = 50.0,
     this.strokeWidth=2});
 
   @override

@@ -11,7 +11,7 @@ class AppHelpers {
 
   /// Shows a blocking loader dialog (barrier is not dismissible, so the
   /// user can't tap through it while an API call is in progress).
-  static void showLoader({Color color = Colors.yellow}) {
+  static void showLoader({Color color = Colors.black}) {
     if (Get.isDialogOpen == true) return; // avoid stacking multiple loaders
     Get.dialog(
       PopScope(
