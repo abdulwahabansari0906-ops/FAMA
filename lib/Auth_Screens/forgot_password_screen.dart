@@ -20,7 +20,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     final phone = _phoneController.text.trim();
 
     if (phone.isEmpty) {
-      AppHelpers.showError ('Phone number required hai.');
+      AppHelpers.showError ('Phone number is required');
       return;
     }
 
